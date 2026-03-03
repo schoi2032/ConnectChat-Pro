@@ -3,329 +3,416 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ConnectChat | Direct P2P</title>
+    <title>ConnectChat | Ultra-Private P2P</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- PeerJS for WebRTC Direct Connections -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
         
+        :root {
+            --brand: #6366f1;
+            --brand-light: #a855f7;
+            --brand-gradient: linear-gradient(135deg, var(--brand) 0%, var(--brand-light) 100%);
+        }
+
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
             background-color: #f8fafc;
             color: #0f172a;
+            -webkit-font-smoothing: antialiased;
         }
 
-        /* Redesigned Minimalist P2P Logo */
-        .logo-box {
+        /* --- THE COOL LOGO --- */
+        .logo-mark {
             position: relative;
             width: 64px;
             height: 64px;
             background: #0f172a;
-            border-radius: 20px;
+            border-radius: 22px;
             display: flex;
             align-items: center;
             justify-content: center;
-            overflow: hidden;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
         }
 
-        .logo-wave {
+        .node-dot {
+            width: 12px;
+            height: 12px;
+            background: white;
+            border-radius: 50%;
+            z-index: 2;
+        }
+
+        .node-ring {
             position: absolute;
             width: 100%;
             height: 100%;
-            border: 2px solid rgba(255,255,255,0.1);
-            border-radius: 20px;
-            animation: wave 2s infinite linear;
+            border: 2px solid var(--brand);
+            border-radius: 22px;
+            animation: ring-pulse 2s infinite ease-out;
+            opacity: 0;
         }
 
-        @keyframes wave {
-            0% { transform: scale(0.5); opacity: 1; }
-            100% { transform: scale(1.5); opacity: 0; }
+        @keyframes ring-pulse {
+            0% { transform: scale(0.6); opacity: 1; }
+            100% { transform: scale(1.4); opacity: 0; }
         }
 
+        /* --- CHAT BUBBLES --- */
         .bubble {
-            max-width: 85%;
-            padding: 12px 18px;
+            max-width: 80%;
+            padding: 14px 20px;
             font-size: 0.95rem;
-            line-height: 1.5;
-            position: relative;
+            line-height: 1.6;
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
 
         .bubble-me {
-            background: #0f172a;
+            background: var(--brand-gradient);
             color: white;
-            border-radius: 18px 18px 2px 18px;
-            align-self: flex-end;
+            border-radius: 24px 24px 4px 24px;
+            box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.3);
         }
 
         .bubble-them {
             background: white;
             color: #1e293b;
-            border-radius: 18px 18px 18px 2px;
+            border-radius: 24px 24px 24px 4px;
             border: 1px solid #e2e8f0;
-            align-self: flex-start;
         }
 
-        .custom-scroll::-webkit-scrollbar { width: 4px; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        /* --- RADAR SEARCHING --- */
+        .radar {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: 2px solid #e2e8f0;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 2rem;
+        }
+
+        .radar-sweep {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 2px solid var(--brand);
+            animation: radar-ping 2s infinite;
+        }
+
+        @keyframes radar-ping {
+            0% { transform: scale(0.5); opacity: 1; }
+            100% { transform: scale(1.5); opacity: 0; }
+        }
+
+        .custom-scroll::-webkit-scrollbar { width: 5px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
 
         #toast {
             position: fixed;
-            top: 20px;
+            top: 24px;
             left: 50%;
             transform: translateX(-50%) translateY(-100px);
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            z-index: 999;
+            transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            z-index: 1000;
         }
-        #toast.show { transform: translateX(-50%) translateY(0); }
+        #toast.visible { transform: translateX(-50%) translateY(0); }
     </style>
 </head>
-<body class="h-screen flex flex-col overflow-hidden">
+<body class="h-screen overflow-hidden flex flex-col">
 
-    <!-- Status Toast -->
-    <div id="toast" class="bg-indigo-600 text-white px-6 py-3 rounded-2xl shadow-xl flex items-center gap-3 font-bold text-sm">
-        <i class="fas fa-bolt"></i>
-        <span id="toast-text">System Ready</span>
+    <!-- Notifications -->
+    <div id="toast" class="bg-slate-900 text-white px-6 py-4 rounded-3xl shadow-2xl flex items-center gap-4 min-w-[300px]">
+        <div class="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center">
+            <i class="fas fa-check text-xs"></i>
+        </div>
+        <div class="flex flex-col">
+            <span class="text-xs font-black uppercase tracking-tighter opacity-50">Signal Status</span>
+            <span id="toast-msg" class="font-bold text-sm">System Online</span>
+        </div>
     </div>
 
-    <!-- Auth Overlay -->
-    <div id="auth-screen" class="fixed inset-0 bg-white z-[100] flex items-center justify-center p-6">
-        <div class="max-w-sm w-full text-center">
-            <div class="logo-box mx-auto mb-8 shadow-2xl">
-                <div class="logo-wave"></div>
-                <i class="fas fa-shield-halved text-white text-2xl relative z-10"></i>
+    <!-- Entry / Onboarding -->
+    <div id="landing" class="fixed inset-0 z-[200] bg-white flex items-center justify-center p-6">
+        <div class="max-w-md w-full text-center">
+            <div class="logo-mark mx-auto mb-10">
+                <div class="node-ring"></div>
+                <div class="node-dot"></div>
             </div>
-            <h1 class="text-3xl font-extrabold tracking-tight mb-2">ConnectChat</h1>
-            <p class="text-slate-400 text-sm mb-10 font-medium">True Peer-to-Peer messaging.</p>
+            <h1 class="text-4xl font-extrabold tracking-tighter text-slate-900 mb-2">ConnectChat</h1>
+            <p class="text-slate-400 font-medium mb-12">Encrypted, peer-to-peer, zero-knowledge.</p>
             
             <div class="space-y-4 text-left">
-                <div>
-                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Choose Handle</label>
-                    <input type="text" id="name-input" placeholder="e.g. Alice" 
-                        class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 focus:border-indigo-500 outline-none font-bold transition-all">
+                <div class="group">
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 mb-2 block group-focus-within:text-indigo-500 transition-colors">Your Nickname</label>
+                    <input type="text" id="name-input" placeholder="e.g. Maverick" maxlength="12"
+                        class="w-full bg-slate-50 border-2 border-slate-100 rounded-3xl px-8 py-5 focus:border-indigo-500 outline-none transition-all font-bold text-lg">
                 </div>
-                <div>
-                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Public Link ID (Optional)</label>
-                    <input type="text" id="room-id-input" placeholder="Custom-ID-123" 
-                        class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 focus:border-indigo-500 outline-none font-mono text-sm transition-all">
+                
+                <div class="group">
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4 mb-2 block group-focus-within:text-indigo-500 transition-colors">Custom Room ID (Optional)</label>
+                    <input type="text" id="room-id-input" placeholder="Leave blank for random" 
+                        class="w-full bg-slate-50 border-2 border-slate-100 rounded-3xl px-8 py-5 focus:border-indigo-500 outline-none transition-all font-mono text-sm">
                 </div>
-                <button id="join-btn" class="w-full bg-slate-900 text-white font-bold py-5 rounded-2xl hover:bg-black transition-all shadow-lg active:scale-95">
-                    Establish Mesh
+                
+                <button id="start-btn" class="w-full bg-slate-900 text-white font-black py-6 rounded-3xl shadow-xl hover:bg-black transition-all active:scale-[0.97] mt-4 flex items-center justify-center gap-3">
+                    Initialize Neural Link
+                    <i class="fas fa-arrow-right text-xs"></i>
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- App Header -->
-    <header class="h-20 bg-white border-b border-slate-100 px-6 lg:px-12 flex items-center justify-between shrink-0">
-        <div class="flex items-center gap-4">
-            <div class="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
-                <i class="fas fa-network-wired"></i>
+    <!-- Header -->
+    <header class="h-24 bg-white/80 backdrop-blur-xl border-b border-slate-100 px-8 lg:px-12 flex items-center justify-between sticky top-0 z-50">
+        <div class="flex items-center gap-5">
+            <div class="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center shadow-lg relative overflow-hidden">
+                <div class="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-purple-500/20"></div>
+                <i class="fas fa-bolt-lightning text-white text-xl relative z-10"></i>
             </div>
             <div>
-                <h2 class="font-bold text-slate-900 leading-none" id="display-name">Guest</h2>
-                <span class="text-[10px] text-slate-400 font-bold uppercase tracking-tighter" id="peer-status">Offline</span>
+                <h2 class="font-extrabold text-slate-900 tracking-tight text-lg" id="header-name">Maverick</h2>
+                <div class="flex items-center gap-2">
+                    <span id="status-light" class="w-2 h-2 bg-slate-300 rounded-full"></span>
+                    <span id="status-text" class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Awaiting Peer</span>
+                </div>
             </div>
         </div>
 
-        <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl">
-            <span class="text-[10px] font-bold text-slate-400">MY ID:</span>
-            <code id="my-peer-id" class="text-xs font-black text-indigo-600 font-mono tracking-tight">WAITING...</code>
-            <button id="copy-id-btn" class="ml-2 text-slate-300 hover:text-slate-600 transition-colors">
+        <div class="flex items-center gap-3 bg-slate-50 border border-slate-200 pl-6 pr-3 py-3 rounded-2xl">
+            <div class="flex flex-col">
+                <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Share ID</span>
+                <code id="my-id-display" class="text-xs font-bold text-indigo-600 font-mono">---</code>
+            </div>
+            <button id="copy-id" class="w-10 h-10 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-indigo-600 transition-all shadow-sm">
                 <i class="fas fa-copy"></i>
             </button>
         </div>
     </header>
 
     <main class="flex-1 flex overflow-hidden">
-        <!-- Peer Sidebar -->
-        <aside class="w-72 border-r border-slate-100 bg-white hidden md:flex flex-col p-6 shrink-0">
-            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Add Connection</label>
-            <div class="flex flex-col gap-2 mb-8">
-                <input type="text" id="target-id-input" placeholder="Friend's Peer ID" 
-                    class="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-mono focus:border-indigo-500 outline-none transition-all">
-                <button id="connect-btn" class="bg-indigo-600 text-white text-xs font-bold py-3 rounded-xl hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100">
-                    Connect to Peer
-                </button>
+        <!-- Sidebar -->
+        <aside class="w-80 bg-white border-r border-slate-100 hidden lg:flex flex-col p-8 shrink-0">
+            <div class="mb-10">
+                <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 block">Connect to Peer</label>
+                <div class="relative group">
+                    <input type="text" id="target-id" placeholder="Paste ID here..." 
+                        class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-4 text-sm font-mono focus:border-indigo-500 outline-none transition-all pr-14">
+                    <button id="connect-btn" class="absolute right-2 top-2 w-10 h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                </div>
             </div>
 
-            <div class="flex-1">
-                <div class="flex justify-between items-center mb-4">
-                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Mesh</label>
-                    <span id="mesh-count" class="bg-slate-100 text-slate-500 text-[10px] font-black px-2 py-0.5 rounded-md">0</span>
+            <div class="flex-1 overflow-y-auto custom-scroll">
+                <div class="flex items-center justify-between mb-6">
+                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Links</span>
+                    <span id="peer-count" class="bg-slate-900 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full">1</span>
                 </div>
-                <div id="mesh-list" class="space-y-2">
+                <div id="peer-list" class="space-y-3">
                     <!-- Dynamic Peers -->
                 </div>
             </div>
         </aside>
 
-        <!-- Conversation Space -->
-        <section class="flex-1 flex flex-col bg-slate-50/50 relative">
-            <div id="chat-window" class="flex-1 overflow-y-auto p-6 lg:p-10 flex flex-col gap-4 custom-scroll">
-                <div id="intro-msg" class="my-auto text-center opacity-40">
-                    <i class="fas fa-ghost text-4xl mb-4"></i>
-                    <p class="text-sm font-medium">No active connections in your mesh.</p>
-                    <p class="text-[10px] uppercase font-black mt-2">Share your ID to start chatting</p>
+        <!-- Chat View -->
+        <section class="flex-1 flex flex-col relative bg-[#fcfdfe]">
+            <div id="chat-window" class="flex-1 overflow-y-auto px-6 lg:px-12 py-10 space-y-8 custom-scroll">
+                <div id="radar-container" class="h-full flex flex-col items-center justify-center text-center opacity-60">
+                    <div class="radar">
+                        <div class="radar-sweep"></div>
+                        <i class="fas fa-satellite-dish text-slate-300 text-3xl"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-slate-900 mb-2">Searching for Handshakes</h3>
+                    <p class="text-xs text-slate-400 max-w-[240px] font-medium leading-relaxed">Share your ID or enter a friend's ID to establish a secure neural link.</p>
                 </div>
             </div>
 
-            <!-- Message Bar -->
-            <div class="p-6 bg-white border-t border-slate-100">
-                <form id="msg-form" class="max-w-4xl mx-auto flex gap-3">
-                    <input type="text" id="msg-input" placeholder="Type a message..." autocomplete="off"
-                        class="flex-1 bg-slate-100 border-none rounded-2xl px-6 py-4 font-medium focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all text-slate-700">
-                    <button type="submit" class="w-14 h-14 bg-slate-900 text-white rounded-2xl flex items-center justify-center hover:bg-black transition-all shadow-xl active:scale-90">
-                        <i class="fas fa-paper-plane"></i>
+            <!-- Footer Input -->
+            <footer class="p-8 lg:p-12 bg-white/80 backdrop-blur-xl border-t border-slate-100">
+                <form id="chat-form" class="max-w-4xl mx-auto flex items-center gap-4 relative">
+                    <div class="flex-1 relative">
+                        <input type="text" id="chat-input" placeholder="Send an encrypted message..." autocomplete="off"
+                            class="w-full bg-slate-100 border-none rounded-3xl px-8 py-6 font-bold focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all text-slate-700 shadow-sm placeholder:text-slate-400">
+                    </div>
+                    <button type="submit" class="w-16 h-16 bg-slate-900 text-white rounded-3xl flex items-center justify-center shadow-2xl hover:bg-black transition-all active:scale-90 group">
+                        <i class="fas fa-paper-plane text-xl group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-transform"></i>
                     </button>
                 </form>
-            </div>
+            </footer>
         </section>
     </main>
 
     <script>
         let peer = null;
-        let connections = {}; // Active connections indexed by Peer ID
-        let userName = "Guest";
+        let connections = new Map();
+        let myName = "User";
 
-        const elements = {
-            auth: document.getElementById('auth-screen'),
-            joinBtn: document.getElementById('join-btn'),
+        const els = {
+            landing: document.getElementById('landing'),
+            startBtn: document.getElementById('start-btn'),
             nameIn: document.getElementById('name-input'),
             roomIn: document.getElementById('room-id-input'),
-            myId: document.getElementById('my-peer-id'),
-            targetId: document.getElementById('target-id-input'),
+            myId: document.getElementById('my-id-display'),
+            targetId: document.getElementById('target-id'),
             connectBtn: document.getElementById('connect-btn'),
             chat: document.getElementById('chat-window'),
-            msgForm: document.getElementById('msg-form'),
-            msgIn: document.getElementById('msg-input'),
-            meshList: document.getElementById('mesh-list'),
-            meshCount: document.getElementById('mesh-count'),
-            intro: document.getElementById('intro-msg'),
+            form: document.getElementById('chat-form'),
+            input: document.getElementById('chat-input'),
+            peerList: document.getElementById('peer-list'),
+            peerCount: document.getElementById('peer-count'),
+            statusLight: document.getElementById('status-light'),
+            statusText: document.getElementById('status-text'),
             toast: document.getElementById('toast'),
-            toastText: document.getElementById('toast-text')
+            toastMsg: document.getElementById('toast-msg'),
+            radar: document.getElementById('radar-container')
         };
 
-        // UI Helpers
-        const notify = (msg) => {
-            elements.toastText.innerText = msg;
-            elements.toast.classList.add('show');
-            setTimeout(() => elements.toast.classList.remove('show'), 3000);
-        };
+        // UI Toast
+        function notify(msg) {
+            els.toastMsg.innerText = msg;
+            els.toast.classList.add('visible');
+            setTimeout(() => els.toast.classList.remove('visible'), 3000);
+        }
 
-        const addMessage = (sender, text, isMe) => {
-            elements.intro.style.display = 'none';
+        // Add Message to UI
+        function addMessage(sender, text, type) {
+            els.radar.style.display = 'none';
+            const isMe = type === 'me';
             const div = document.createElement('div');
             div.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`;
             div.innerHTML = `
-                <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 px-2">${sender}</span>
-                <div class="bubble ${isMe ? 'bubble-me' : 'bubble-them'} shadow-sm">
+                <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 px-2">${sender}</span>
+                <div class="bubble ${isMe ? 'bubble-me' : 'bubble-them'}">
                     ${text.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[m]))}
                 </div>
             `;
-            elements.chat.appendChild(div);
-            elements.chat.scrollTop = elements.chat.scrollHeight;
-        };
+            els.chat.appendChild(div);
+            els.chat.scrollTop = els.chat.scrollHeight;
+        }
 
-        const updateMeshUI = () => {
-            const keys = Object.keys(connections);
-            elements.meshCount.innerText = keys.length;
-            elements.meshList.innerHTML = keys.map(id => `
-                <div class="p-3 bg-white border border-slate-100 rounded-xl flex items-center justify-between shadow-sm">
-                    <div class="flex items-center gap-3 overflow-hidden">
-                        <div class="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-[10px] font-bold text-slate-400 shrink-0">
-                            ${connections[id].metadata?.name?.charAt(0) || 'P'}
-                        </div>
-                        <span class="text-xs font-bold text-slate-700 truncate">${connections[id].metadata?.name || 'Peer'}</span>
-                    </div>
-                    <div class="w-2 h-2 bg-emerald-500 rounded-full"></div>
+        // Update UI Peers
+        function updatePeers() {
+            els.peerCount.innerText = connections.size + 1;
+            let html = `
+                <div class="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-center gap-4">
+                    <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white text-[10px] font-black">ME</div>
+                    <span class="text-sm font-bold text-slate-800">${myName}</span>
                 </div>
-            `).join('');
-        };
-
-        // P2P Logic
-        const setupConnection = (conn) => {
-            conn.on('open', () => {
-                connections[conn.peer] = conn;
-                updateMeshUI();
-                notify(`${conn.metadata?.name || 'Peer'} connected`);
+            `;
+            connections.forEach((conn) => {
+                html += `
+                    <div class="p-4 bg-white border border-slate-100 rounded-2xl flex items-center justify-between shadow-sm">
+                        <div class="flex items-center gap-4 overflow-hidden">
+                            <div class="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400">
+                                <i class="fas fa-user text-xs"></i>
+                            </div>
+                            <span class="text-sm font-bold text-slate-700 truncate">${conn.metadata?.name || 'Peer'}</span>
+                        </div>
+                        <div class="w-2 h-2 bg-emerald-500 rounded-full shadow-[0_0_8px_#10b981]"></div>
+                    </div>
+                `;
             });
+            els.peerList.innerHTML = html;
 
-            conn.on('data', (data) => {
-                addMessage(conn.metadata?.name || "Peer", data, false);
-            });
+            if (connections.size > 0) {
+                els.statusLight.className = "w-2 h-2 bg-emerald-500 rounded-full animate-pulse";
+                els.statusText.innerText = "Connection Established";
+                els.statusText.classList.replace('text-slate-400', 'text-emerald-600');
+            }
+        }
 
-            conn.on('close', () => {
-                delete connections[conn.peer];
-                updateMeshUI();
-                notify("Peer disconnected");
-                if(Object.keys(connections).length === 0) elements.intro.style.display = 'block';
-            });
-        };
+        // Logic: Initialization
+        els.startBtn.onclick = () => {
+            const name = els.nameIn.value.trim();
+            const cid = els.roomIn.value.trim();
+            if (!name) return;
 
-        elements.joinBtn.onclick = () => {
-            const name = elements.nameIn.value.trim();
-            const customId = elements.roomIn.value.trim();
-            if (!name) return alert("Enter a name");
+            myName = name;
+            document.getElementById('header-name').innerText = name;
+            els.landing.style.opacity = '0';
+            setTimeout(() => els.landing.style.display = 'none', 500);
 
-            userName = name;
-            document.getElementById('display-name').innerText = name;
-            elements.auth.style.opacity = '0';
-            setTimeout(() => elements.auth.style.display = 'none', 400);
-
-            // Initialize Peer object
-            peer = customId ? new Peer(customId) : new Peer();
+            // PeerJS Core
+            peer = cid ? new Peer(cid) : new Peer();
 
             peer.on('open', (id) => {
-                elements.myId.innerText = id;
-                document.getElementById('peer-status').innerText = "Online (Mesh Ready)";
-                document.getElementById('peer-status').classList.replace('text-slate-400', 'text-emerald-500');
+                els.myId.innerText = id;
+                notify("Neural Link Online");
+                updatePeers();
             });
 
-            // Listen for incoming handshakes
             peer.on('connection', (conn) => {
-                setupConnection(conn);
+                setupConn(conn);
             });
 
             peer.on('error', (err) => {
                 console.error(err);
-                if (err.type === 'unavailable-id') notify("ID already taken");
-                else notify("Connection Error");
+                if (err.type === 'unavailable-id') {
+                    alert("Room ID occupied. Try another.");
+                    window.location.reload();
+                }
+                notify("Link Fault Detected");
             });
         };
 
-        elements.connectBtn.onclick = () => {
-            const target = elements.targetId.value.trim();
-            if (!target || target === peer.id) return;
-            if (connections[target]) return notify("Already connected");
+        // Logic: Establish Link
+        function setupConn(conn) {
+            conn.on('open', () => {
+                connections.set(conn.peer, conn);
+                updatePeers();
+                notify(`${conn.metadata?.name || 'Peer'} Synced`);
+            });
+
+            conn.on('data', (data) => {
+                addMessage(conn.metadata?.name || "Peer", data, "them");
+            });
+
+            conn.on('close', () => {
+                connections.delete(conn.peer);
+                updatePeers();
+                notify("Link Severed");
+                if (connections.size === 0) els.radar.style.display = 'flex';
+            });
+        }
+
+        els.connectBtn.onclick = () => {
+            const target = els.targetId.value.trim();
+            if (!target || target === peer.id || connections.has(target)) return;
 
             const conn = peer.connect(target, {
-                metadata: { name: userName }
+                metadata: { name: myName },
+                reliable: true
             });
-            setupConnection(conn);
-            elements.targetId.value = '';
+            setupConn(conn);
+            els.targetId.value = '';
         };
 
-        elements.msgForm.onsubmit = (e) => {
+        // Logic: Messaging
+        els.form.onsubmit = (e) => {
             e.preventDefault();
-            const msg = elements.msgIn.value.trim();
+            const msg = els.input.value.trim();
             if (!msg) return;
 
-            // Broadcast to all peers in the mesh
-            Object.values(connections).forEach(conn => {
+            connections.forEach(conn => {
                 if (conn.open) conn.send(msg);
             });
 
-            addMessage(userName, msg, true);
-            elements.msgIn.value = '';
+            addMessage(myName, msg, "me");
+            els.input.value = '';
         };
 
         // Utilities
-        document.getElementById('copy-id-btn').onclick = () => {
-            const id = elements.myId.innerText;
-            if (id === "WAITING...") return;
-            navigator.clipboard.writeText(id).then(() => notify("ID Copied!"));
+        document.getElementById('copy-id').onclick = () => {
+            const id = els.myId.innerText;
+            if (id === "---") return;
+            navigator.clipboard.writeText(id).then(() => {
+                notify("ID Copied to Clipboard");
+            });
         };
     </script>
 </body>
