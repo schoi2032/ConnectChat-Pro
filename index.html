@@ -156,6 +156,7 @@
     </header>
 
     <main class="flex-1 flex overflow-hidden">
+        <!-- Sidebar -->
         <aside class="w-80 bg-white border-r border-slate-100 hidden lg:flex flex-col p-8 shrink-0">
             <div class="mb-10">
                 <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 block">Manual Link</label>
@@ -177,6 +178,7 @@
             </div>
         </aside>
 
+        <!-- Chat Area -->
         <section class="flex-1 flex flex-col relative bg-[#fcfdfe]">
             <div id="chat-window" class="flex-1 overflow-y-auto px-6 lg:px-12 py-10 space-y-8 custom-scroll">
                 <div id="radar-container" class="h-full flex flex-col items-center justify-center text-center">
@@ -228,7 +230,7 @@
             targetContainer: document.getElementById('target-id-container')
         };
 
-        // Check URL for auto-connect
+        // 1. Initial URL Check
         window.addEventListener('DOMContentLoaded', () => {
             const params = new URLSearchParams(window.location.search);
             if (params.has('peer')) {
@@ -239,6 +241,7 @@
             els.nameIn.focus();
         });
 
+        // 2. Utility Functions
         function notify(msg, type = 'success') {
             els.toastMsg.innerText = msg;
             document.getElementById('toast-icon').className = `w-8 h-8 ${type === 'error' ? 'bg-red-500' : 'bg-emerald-500'} rounded-full flex items-center justify-center`;
@@ -268,7 +271,7 @@
                 </div>
             `;
             connections.forEach((conn) => {
-                const name = conn.peerName || "Establishing...";
+                const name = conn.peerName || "Connecting...";
                 html += `
                     <div class="p-4 bg-white border border-slate-100 rounded-2xl flex items-center justify-between shadow-sm">
                         <div class="flex items-center gap-3 overflow-hidden">
@@ -289,33 +292,30 @@
             els.radar.style.display = active ? 'none' : 'flex';
         }
 
-        function setupConnection(conn) {
+        // 3. Peer Management
+        function handleConnection(conn) {
             if (!conn) return;
-            
-            // Prevent duplicates
-            if (connections.has(conn.peer)) {
-                console.log("Connection already exists for:", conn.peer);
-                return;
-            }
 
             conn.on('open', () => {
-                console.log("Connection opened with:", conn.peer);
-                // Handshake: Send our nickname immediately
+                // Step 1: Send our identity immediately
                 conn.send({ type: 'handshake', name: myName });
                 connections.set(conn.peer, conn);
                 updatePeerRegistry();
-                notify("Connected to Peer");
+                notify("Signal Link Established");
             });
 
             conn.on('data', (data) => {
-                console.log("Received data:", data);
-                if (typeof data === 'object' && data.type === 'handshake') {
+                // Handle handshake
+                if (data && data.type === 'handshake') {
                     conn.peerName = data.name;
                     updatePeerRegistry();
                     return;
                 }
-                // Handle message text
-                addMessage(conn.peerName || "Peer", data, "them");
+                
+                // Handle text message
+                if (typeof data === 'string') {
+                    addMessage(conn.peerName || "Peer", data, "them");
+                }
             });
 
             conn.on('close', () => {
@@ -325,63 +325,62 @@
             });
 
             conn.on('error', (err) => {
-                console.error("Conn Error:", err);
+                console.error("Connection Error:", err);
                 connections.delete(conn.peer);
                 updatePeerRegistry();
             });
         }
 
+        // 4. UI Actions
         els.startBtn.onclick = () => {
             const name = els.nameIn.value.trim();
-            if (!name) return notify("Name required", 'error');
+            if (!name) return notify("Please enter a nickname", 'error');
 
             myName = name;
             document.getElementById('header-name').innerText = name;
-            els.landing.classList.add('hidden');
+            els.landing.style.display = 'none';
 
-            // Initialize Peer with reliable options
+            // Initialize PeerJS
             peer = new Peer(undefined, {
-                debug: 2
+                debug: 1,
+                config: {
+                    'iceServers': [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                }
             });
 
             peer.on('open', (id) => {
-                console.log('My peer ID is: ' + id);
                 els.myId.innerText = id;
                 updatePeerRegistry();
                 
-                // Auto-connect if ID exists in URL
+                // Auto-connect if link provided
                 if (pendingPeerId) {
-                    console.log("Attempting auto-connect to:", pendingPeerId);
                     const conn = peer.connect(pendingPeerId, { reliable: true });
-                    setupConnection(conn);
+                    handleConnection(conn);
                 }
             });
 
             peer.on('connection', (conn) => {
-                console.log("Incoming connection from:", conn.peer);
-                setupConnection(conn);
+                handleConnection(conn);
             });
 
             peer.on('error', (err) => {
-                console.error("Peer Error:", err);
-                if (err.type === 'peer-not-found') {
-                    notify("Peer ID not found", 'error');
-                } else if (err.type === 'unavailable-id') {
-                    notify("ID already in use", 'error');
-                } else {
-                    notify("System Error", 'error');
-                }
+                console.error("PeerJS Error:", err);
+                if (err.type === 'peer-not-found') notify("Peer not found", 'error');
+                else notify("Signal failed: " + err.type, 'error');
             });
         };
 
         els.connectBtn.onclick = () => {
             const id = els.targetId.value.trim();
-            if (!id) return notify("Enter an ID", 'error');
-            if (peer && id === peer.id) return notify("Cannot connect to self", 'error');
+            if (!id) return notify("Enter a Peer ID", 'error');
+            if (peer && id === peer.id) return notify("That's your own ID", 'error');
             
             notify("Connecting...");
             const conn = peer.connect(id, { reliable: true });
-            setupConnection(conn);
+            handleConnection(conn);
             els.targetId.value = '';
         };
 
@@ -391,23 +390,20 @@
             if (!msg) return;
             
             if (connections.size === 0) {
-                notify("No peers connected", 'error');
-                return;
+                return notify("No peers connected", 'error');
             }
 
-            let sent = false;
+            let successfulSend = false;
             connections.forEach(conn => {
                 if (conn.open) {
                     conn.send(msg);
-                    sent = true;
+                    successfulSend = true;
                 }
             });
 
-            if (sent) {
+            if (successfulSend) {
                 addMessage(myName, msg, "me");
                 els.input.value = '';
-            } else {
-                notify("Failed to send", 'error');
             }
         };
 
@@ -415,14 +411,12 @@
             const id = els.myId.innerText;
             if (id.includes('Connecting')) return;
             
-            // Generate full URL for sharing
             const shareUrl = `${window.location.origin}${window.location.pathname}?peer=${id}`;
-            
-            // Fallback copy for environments where navigator.clipboard might be restricted
             const textArea = document.createElement("textarea");
             textArea.value = shareUrl;
             document.body.appendChild(textArea);
             textArea.select();
+            
             try {
                 document.execCommand('copy');
                 notify("Share Link Copied!");
@@ -430,7 +424,7 @@
                 icon.className = "fas fa-check text-emerald-600";
                 setTimeout(() => icon.className = "fas fa-copy", 2000);
             } catch (err) {
-                notify("Copy failed", "error");
+                notify("Manual Copy Required", "error");
             }
             document.body.removeChild(textArea);
         };
