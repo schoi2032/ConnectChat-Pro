@@ -257,7 +257,7 @@
             div.className = `flex flex-col ${type === 'me' ? 'items-end' : 'items-start'}`;
             const safeText = text.toString().replace(/</g, "&lt;");
             div.innerHTML = `
-                <span class="text-[8px] font-bold text-slate-400 uppercase px-2 mb-0.5">${sender}</span>
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 px-1">${sender}</span>
                 <div class="bubble ${type === 'me' ? 'bubble-me' : 'bubble-them'} shadow-sm animate-in zoom-in-95 duration-200">${safeText}</div>
             `;
             els.chat.appendChild(div);
