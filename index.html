@@ -90,17 +90,24 @@
         <span id="toast-msg" class="font-bold text-sm">System Ready</span>
     </div>
 
-    <div id="landing" class="fixed inset-0 z-[200] bg-white flex items-center justify-center p-6">
-        <div class="max-w-md w-full text-center">
+    <div id="landing" class="fixed inset-0 z-[200] bg-white flex items-center justify-center p-6 overflow-y-auto">
+        <div class="max-w-md w-full text-center py-10">
             <div class="logo-mark mx-auto mb-8">
                 <div class="node-ring"></div>
                 <i class="fas fa-project-diagram text-indigo-500"></i>
             </div>
             <h1 class="text-3xl font-extrabold tracking-tighter text-slate-900 mb-2">Mesh Chat P2P</h1>
-            <p class="text-slate-400 font-medium mb-10 text-sm">Automated P2P Mesh: Connect to one, join all.</p>
+            <p class="text-slate-400 font-medium mb-10 text-sm">Automated P2P Mesh: Choose an ID or go Random.</p>
             <div class="space-y-4 text-left">
-                <input type="text" id="name-input" placeholder="Your Nickname" class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 focus:border-indigo-500 outline-none font-bold text-lg">
-                <button id="start-btn" class="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Join Mesh Network</button>
+                <div>
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 mb-1 block">Display Name</label>
+                    <input type="text" id="name-input" placeholder="e.g. Alex" class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 focus:border-indigo-500 outline-none font-bold text-lg">
+                </div>
+                <div>
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 mb-1 block">Custom Node ID (Optional)</label>
+                    <input type="text" id="custom-id-input" placeholder="e.g. my-private-room" class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 focus:border-indigo-500 outline-none font-mono text-sm">
+                </div>
+                <button id="start-btn" class="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Launch Connection</button>
             </div>
         </div>
     </div>
@@ -158,12 +165,14 @@
         let peer = null;
         let connections = new Map();
         let knownNodeIds = new Set();
-        let myName = "User";
+        let myName = localStorage.getItem('chat-nickname') || "";
+        let messageHistory = JSON.parse(localStorage.getItem('chat-history')) || [];
 
-        // Web Audio Context for message "song" (pop sound)
         let audioCtx = null;
         function playPop() {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             osc.connect(gain);
@@ -184,6 +193,7 @@
             landing: document.getElementById('landing'),
             startBtn: document.getElementById('start-btn'),
             nameIn: document.getElementById('name-input'),
+            customIdIn: document.getElementById('custom-id-input'),
             myId: document.getElementById('my-id-display'),
             targetId: document.getElementById('target-id'),
             connectBtn: document.getElementById('connect-btn'),
@@ -199,6 +209,8 @@
             headerName: document.getElementById('header-name')
         };
 
+        if (myName) els.nameIn.value = myName;
+
         function notify(msg) {
             els.toastMsg.innerText = msg;
             els.toast.classList.add('visible');
@@ -211,51 +223,37 @@
             conn.on('open', () => {
                 connections.set(conn.peer, conn);
                 knownNodeIds.add(conn.peer);
-                
-                // Handshake with current mesh list
                 conn.send({ 
                     type: 'handshake', 
                     name: myName, 
                     mesh: Array.from(knownNodeIds) 
                 });
-                
                 updateUI();
                 notify("Mesh Node Linked");
             });
 
             conn.on('data', (data) => {
-                if (data.type === 'ping') return;
-                
                 if (data.type === 'handshake') {
                     conn.peerName = data.name;
-                    // MESH LOGIC: If they know people I don't, try to connect to them
                     if (data.mesh) {
                         data.mesh.forEach(id => {
                             if (id !== peer.id && !connections.has(id)) {
-                                console.log("Attempting to mesh with:", id);
                                 setupConnection(peer.connect(id));
                             }
                         });
                     }
                     updateUI();
                 } else {
-                    playPop(); // Play sound on message
+                    playPop();
                     addMessage(conn.peerName || "Peer", data, "them");
                 }
             });
 
-            conn.on('close', () => {
-                connections.delete(conn.peer);
-                updateUI();
-            });
-            
-            conn.on('error', () => {
-                connections.delete(conn.peer);
-                updateUI();
-            });
+            conn.on('close', () => { connections.delete(conn.peer); updateUI(); });
+            conn.on('error', () => { connections.delete(conn.peer); updateUI(); });
         }
 
-        function addMessage(sender, text, type) {
+        function addMessage(sender, text, type, save = true) {
             els.radar.style.display = 'none';
             const div = document.createElement('div');
             div.className = `flex flex-col ${type === 'me' ? 'items-end' : 'items-start'}`;
@@ -266,6 +264,19 @@
             `;
             els.chat.appendChild(div);
             els.chat.scrollTop = els.chat.scrollHeight;
+
+            if (save) {
+                messageHistory.push({ sender, text, type });
+                if (messageHistory.length > 50) messageHistory.shift();
+                localStorage.setItem('chat-history', JSON.stringify(messageHistory));
+            }
+        }
+
+        function loadHistory() {
+            if (messageHistory.length > 0) {
+                els.radar.style.display = 'none';
+                messageHistory.forEach(msg => addMessage(msg.sender, msg.text, msg.type, false));
+            }
         }
 
         function updateUI() {
@@ -277,42 +288,44 @@
                 </div>`;
             });
             els.peerList.innerHTML = html || '<p class="text-[10px] text-slate-300">No active links</p>';
-            
-            if (connections.size > 0) {
-                els.statusLight.className = "w-2 h-2 bg-emerald-500 rounded-full animate-pulse";
-                els.statusText.innerText = `${connections.size} Active in Mesh`;
-            } else {
-                els.statusLight.className = "w-2 h-2 bg-indigo-400 rounded-full";
-                els.statusText.innerText = "Online - Standalone";
-            }
+            els.statusLight.className = connections.size > 0 ? "w-2 h-2 bg-emerald-500 rounded-full animate-pulse" : "w-2 h-2 bg-indigo-400 rounded-full";
+            els.statusText.innerText = connections.size > 0 ? `${connections.size} Active in Mesh` : "Online - Standalone";
         }
 
         els.startBtn.onclick = () => {
             const name = els.nameIn.value.trim();
+            const customId = els.customIdIn.value.trim();
             if (!name) return alert("Nickname required");
+            
             myName = name;
+            localStorage.setItem('chat-nickname', name);
             els.headerName.innerText = name;
             els.landing.style.display = 'none';
 
-            peer = new Peer(undefined, {
-                config: {
-                    'iceServers': [
-                        { url: 'stun:stun.l.google.com:19302' },
-                        { url: 'stun:stun1.l.google.com:19302' },
-                        { url: 'stun:stun2.l.google.com:19302' },
-                        { url: 'stun:stun3.l.google.com:19302' },
-                        { url: 'stun:stun4.l.google.com:19302' }
-                    ]
-                }
+            // Create peer with optional custom ID
+            peer = new Peer(customId || undefined, {
+                debug: 1,
+                config: { 'iceServers': [{ url: 'stun:stun.l.google.com:19302' }] }
             });
 
             peer.on('open', (id) => { 
                 els.myId.innerText = id; 
                 knownNodeIds.add(id);
-                notify("P2P Node Active"); 
+                notify("P2P Node Active");
+                loadHistory(); 
+            });
+
+            peer.on('error', (err) => {
+                if (err.type === 'unavailable-id') {
+                    alert("That Node ID is already taken! Try another one.");
+                    window.location.reload();
+                } else {
+                    console.error(err);
+                }
             });
 
             peer.on('connection', setupConnection);
+            peer.on('disconnected', () => peer.reconnect());
         };
 
         els.connectBtn.onclick = () => {
@@ -327,21 +340,24 @@
             e.preventDefault();
             const msg = els.input.value.trim();
             if (!msg) return;
-            connections.forEach(c => c.open && c.send(msg));
+            connections.forEach(c => { if (c.open) c.send(msg); });
             addMessage(myName, msg, "me");
             els.input.value = '';
         };
 
         document.getElementById('copy-id').onclick = () => {
-            navigator.clipboard.writeText(els.myId.innerText);
+            const text = els.myId.innerText;
+            const el = document.createElement('textarea');
+            el.value = text;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
             notify("ID Copied!");
         };
 
-        // Auto-reconnect heartbeat
         setInterval(() => {
-            connections.forEach((c, id) => {
-                if (!c.open) connections.delete(id);
-            });
+            connections.forEach((c, id) => { if (!c.open) connections.delete(id); });
             updateUI();
         }, 5000);
     </script>
