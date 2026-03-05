@@ -50,49 +50,67 @@
             currentRoom = room.toLowerCase().trim() || "global";
             els.roomDisplay.innerText = currentRoom;
             
-            // 1. Sign in
-            const userCred = await signInAnonymously(auth);
-            const userId = userCred.user.uid;
+            notify("Authenticating...");
 
-            // 2. Initialize PeerJS
-            peer = new Peer(userId, {
-                debug: 1,
-                config: { 'iceServers': [{ url: 'stun:stun.l.google.com:19302' }] }
-            });
+            try {
+                // 1. Sign in FIRST to get a stable UID
+                const userCred = await signInAnonymously(auth);
+                const userId = userCred.user.uid;
 
-            peer.on('open', (id) => {
-                myId = id;
-                registerPresence(id);
-                listenForPeers();
-                els.landing.classList.add('hidden');
-                els.chatSection.classList.remove('hidden');
-                notify("Connected to Mesh");
-            });
+                // 2. Initialize PeerJS with the Firebase UID to ensure consistency
+                peer = new Peer(userId, {
+                    debug: 1,
+                    config: { 'iceServers': [{ urls: 'stun:stun.l.google.com:19302' }] }
+                });
 
-            peer.on('connection', (conn) => setupConnection(conn));
-            
-            peer.on('error', (err) => {
-                console.error("Peer Error:", err);
-                if (err.type === 'peer-unavailable') return;
-                notify("Connection issue. Retrying...");
-            });
+                peer.on('open', (id) => {
+                    myId = id;
+                    registerPresence(id);
+                    listenForPeers();
+                    els.landing.classList.add('hidden');
+                    els.chatSection.classList.remove('hidden');
+                    notify("Connected to Mesh");
+                });
+
+                peer.on('connection', (conn) => setupConnection(conn));
+                
+                peer.on('error', (err) => {
+                    console.error("Peer Error:", err);
+                    if (err.type === 'peer-unavailable') return;
+                    if (err.type === 'unavailable-id') {
+                        // Handle case where ID might still be "active" from previous tab
+                        notify("ID busy, retrying in 3s...");
+                        setTimeout(() => window.location.reload(), 3000);
+                        return;
+                    }
+                    notify("Connection error: " + err.type);
+                });
+
+            } catch (err) {
+                console.error("Initialization Error:", err);
+                notify("Auth failed. Please refresh.");
+            }
         }
 
         // 3. Presence Logic: Register self in the room so others can find you
         async function registerPresence(peerId) {
             const presenceDoc = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoom, 'peers', peerId);
-            await setDoc(presenceDoc, {
-                name: myName,
-                lastSeen: serverTimestamp()
-            });
+            
+            const updatePresence = async () => {
+                await setDoc(presenceDoc, {
+                    name: myName,
+                    lastSeen: serverTimestamp()
+                }, { merge: true });
+            };
+
+            await updatePresence();
 
             // Heartbeat to stay "alive" forever
-            setInterval(async () => {
-                await setDoc(presenceDoc, { name: myName, lastSeen: serverTimestamp() }, { merge: true });
-            }, 20000);
+            const heartbeat = setInterval(updatePresence, 20000);
 
             // Cleanup on tab close
             window.addEventListener('beforeunload', () => {
+                clearInterval(heartbeat);
                 deleteDoc(presenceDoc);
             });
         }
@@ -102,16 +120,17 @@
             const peersRef = collection(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoom, 'peers');
             onSnapshot(peersRef, (snapshot) => {
                 snapshot.docChanges().forEach((change) => {
-                    const peerData = change.doc.data();
                     const peerId = change.doc.id;
 
+                    // If a new peer is added and it's not us and we aren't connected yet
                     if (change.type === "added" && peerId !== myId && !connections.has(peerId)) {
-                        // Connect to new person in room
                         const conn = peer.connect(peerId);
                         setupConnection(conn);
                     }
                 });
-            }, (err) => console.error("Firestore Listen Error:", err));
+            }, (err) => {
+                console.error("Firestore Listen Error:", err);
+            });
         }
 
         function setupConnection(conn) {
@@ -136,6 +155,11 @@
                 connections.delete(conn.peer);
                 updatePeerUI();
             });
+
+            conn.on('error', () => {
+                connections.delete(conn.peer);
+                updatePeerUI();
+            });
         }
 
         function updatePeerUI() {
@@ -154,7 +178,7 @@
             div.className = `flex flex-col ${type === 'me' ? 'items-end' : 'items-start'} mb-4`;
             div.innerHTML = `
                 <span class="text-[10px] font-bold text-slate-400 px-2">${sender}</span>
-                <div class="max-w-[80%] p-3 rounded-2xl ${type === 'me' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-800'}">
+                <div class="max-w-[80%] p-3 rounded-2xl ${type === 'me' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-800 border border-slate-200'}">
                     ${text.replace(/</g, "&lt;")}
                 </div>
             `;
@@ -165,7 +189,9 @@
         els.startBtn.onclick = () => {
             const name = els.nameIn.value.trim();
             const room = els.roomIn.value.trim();
-            if (!name || !room) return alert("Enter Name and Room ID");
+            if (!name || !room) return;
+            els.startBtn.disabled = true;
+            els.startBtn.innerText = "Connecting...";
             initMesh(name, room);
         };
 
@@ -232,14 +258,14 @@
         <main class="flex-1 flex flex-col bg-white">
             <div id="chat-window" class="flex-1 overflow-y-auto p-6 scroll-smooth">
                 <div class="h-full flex flex-col items-center justify-center text-center opacity-30">
-                    <i class="fas fa-comments text-4xl mb-4"></i>
-                    <p class="font-bold">Chat history starts here</p>
+                    <i class="fas fa-comments text-4xl mb-4 text-indigo-200"></i>
+                    <p class="font-bold text-slate-400">Chat history starts here</p>
                 </div>
             </div>
-            <div class="p-4 border-t border-slate-100">
-                <form id="chat-form" class="flex gap-2">
-                    <input type="text" id="chat-input" placeholder="Type a message..." class="flex-1 bg-slate-100 rounded-xl px-5 py-3 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white">
-                    <button class="w-12 h-12 bg-indigo-600 text-white rounded-xl shadow-md flex items-center justify-center hover:bg-indigo-700"><i class="fas fa-paper-plane"></i></button>
+            <div class="p-4 border-t border-slate-100 bg-white">
+                <form id="chat-form" class="flex gap-2 max-w-4xl mx-auto w-full">
+                    <input type="text" id="chat-input" autocomplete="off" placeholder="Type a message..." class="flex-1 bg-slate-100 rounded-xl px-5 py-3 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white border border-transparent focus:border-indigo-100 transition-all">
+                    <button class="w-12 h-12 bg-indigo-600 text-white rounded-xl shadow-md flex items-center justify-center hover:bg-indigo-700 active:scale-95 transition-all"><i class="fas fa-paper-plane"></i></button>
                 </form>
             </div>
         </main>
