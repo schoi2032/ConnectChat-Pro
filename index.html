@@ -9,7 +9,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, collection, query, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, query, deleteDoc, serverTimestamp, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Global State
         const firebaseConfig = JSON.parse(__firebase_config);
@@ -22,6 +22,7 @@
         let myId = null;
         let myName = "";
         let currentRoom = "";
+        let currentUser = null;
         const connections = new Map();
 
         const els = {
@@ -45,20 +46,35 @@
             setTimeout(() => els.toast.classList.remove('visible'), 3000);
         }
 
+        // Initialize Auth immediately
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+                els.startBtn.disabled = false;
+                els.startBtn.innerText = "Join Mesh";
+            } else {
+                signInAnonymously(auth).catch(err => {
+                    console.error("Auth failed:", err);
+                    notify("Auth Error. Refresh page.");
+                });
+            }
+        });
+
         async function initMesh(name, room) {
+            if (!currentUser) {
+                notify("Waiting for auth...");
+                return;
+            }
+
             myName = name;
-            currentRoom = room.toLowerCase().trim() || "global";
+            currentRoom = room.toLowerCase().trim().replace(/[^a-z0-9-]/g, '') || "global";
             els.roomDisplay.innerText = currentRoom;
             
-            notify("Authenticating...");
+            notify("Joining Mesh...");
 
             try {
-                // 1. Sign in FIRST to get a stable UID
-                const userCred = await signInAnonymously(auth);
-                const userId = userCred.user.uid;
-
-                // 2. Initialize PeerJS with the Firebase UID to ensure consistency
-                peer = new Peer(userId, {
+                // Initialize PeerJS with the Firebase UID
+                peer = new Peer(currentUser.uid, {
                     debug: 1,
                     config: { 'iceServers': [{ urls: 'stun:stun.l.google.com:19302' }] }
                 });
@@ -76,61 +92,59 @@
                 
                 peer.on('error', (err) => {
                     console.error("Peer Error:", err);
-                    if (err.type === 'peer-unavailable') return;
                     if (err.type === 'unavailable-id') {
-                        // Handle case where ID might still be "active" from previous tab
-                        notify("ID busy, retrying in 3s...");
-                        setTimeout(() => window.location.reload(), 3000);
-                        return;
+                        // This happens if you refresh and the server still thinks you're there
+                        notify("Connection stale. Fixing...");
+                        peer.destroy();
+                        setTimeout(() => initMesh(name, room), 1500);
+                    } else {
+                        notify("Error: " + err.type);
+                        els.startBtn.disabled = false;
+                        els.startBtn.innerText = "Try Again";
                     }
-                    notify("Connection error: " + err.type);
                 });
 
             } catch (err) {
-                console.error("Initialization Error:", err);
-                notify("Auth failed. Please refresh.");
+                console.error("Init Error:", err);
+                notify("Failed to start.");
+                els.startBtn.disabled = false;
             }
         }
 
-        // 3. Presence Logic: Register self in the room so others can find you
         async function registerPresence(peerId) {
             const presenceDoc = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoom, 'peers', peerId);
             
-            const updatePresence = async () => {
-                await setDoc(presenceDoc, {
-                    name: myName,
-                    lastSeen: serverTimestamp()
-                }, { merge: true });
+            const poke = async () => {
+                try {
+                    await setDoc(presenceDoc, {
+                        name: myName,
+                        lastSeen: serverTimestamp()
+                    }, { merge: true });
+                } catch(e) {}
             };
 
-            await updatePresence();
+            await poke();
+            const heartbeat = setInterval(poke, 15000);
 
-            // Heartbeat to stay "alive" forever
-            const heartbeat = setInterval(updatePresence, 20000);
-
-            // Cleanup on tab close
             window.addEventListener('beforeunload', () => {
                 clearInterval(heartbeat);
                 deleteDoc(presenceDoc);
             });
         }
 
-        // 4. Discovery Logic: Listen for anyone else entering the same Room ID
         function listenForPeers() {
             const peersRef = collection(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoom, 'peers');
+            
             onSnapshot(peersRef, (snapshot) => {
                 snapshot.docChanges().forEach((change) => {
                     const peerId = change.doc.id;
-
-                    // If a new peer is added and it's not us and we aren't connected yet
                     if (change.type === "added" && peerId !== myId && !connections.has(peerId)) {
+                        console.log("Found peer, connecting to:", peerId);
                         const conn = peer.connect(peerId);
                         setupConnection(conn);
                     }
                 });
-            }, (err) => {
-                console.error("Firestore Listen Error:", err);
-            });
+            }, (err) => notify("Mesh sync error."));
         }
 
         function setupConnection(conn) {
@@ -146,6 +160,7 @@
                 if (data.type === 'handshake') {
                     conn.peerName = data.name;
                     updatePeerUI();
+                    addMessage("System", `${data.name} joined the room`, 'system');
                 } else if (data.type === 'chat') {
                     addMessage(data.sender, data.text, 'them');
                 }
@@ -156,7 +171,7 @@
                 updatePeerUI();
             });
 
-            conn.on('error', () => {
+            conn.on('error', (e) => {
                 connections.delete(conn.peer);
                 updatePeerUI();
             });
@@ -165,23 +180,29 @@
         function updatePeerUI() {
             let html = '';
             connections.forEach(c => {
-                html += `<div class="flex items-center gap-2 p-2 bg-slate-50 rounded-lg mb-2">
-                    <div class="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span class="text-xs font-bold text-slate-700">${c.peerName || 'Connecting...'}</span>
+                html += `
+                <div class="flex items-center gap-2 p-3 bg-slate-50 rounded-xl mb-2 border border-slate-100">
+                    <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span class="text-sm font-bold text-slate-700 truncate">${c.peerName || 'Node...'}</span>
                 </div>`;
             });
-            els.peerList.innerHTML = html || '<p class="text-[10px] text-slate-400">Waiting for others to join room...</p>';
+            els.peerList.innerHTML = html || '<p class="text-xs text-slate-400 text-center py-4 italic">Waiting for nodes...</p>';
         }
 
         function addMessage(sender, text, type) {
             const div = document.createElement('div');
-            div.className = `flex flex-col ${type === 'me' ? 'items-end' : 'items-start'} mb-4`;
-            div.innerHTML = `
-                <span class="text-[10px] font-bold text-slate-400 px-2">${sender}</span>
-                <div class="max-w-[80%] p-3 rounded-2xl ${type === 'me' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-800 border border-slate-200'}">
-                    ${text.replace(/</g, "&lt;")}
-                </div>
-            `;
+            if (type === 'system') {
+                div.className = "flex justify-center my-4";
+                div.innerHTML = `<span class="bg-slate-100 text-slate-500 text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-widest">${text}</span>`;
+            } else {
+                div.className = `flex flex-col ${type === 'me' ? 'items-end' : 'items-start'} mb-4`;
+                div.innerHTML = `
+                    <span class="text-[10px] font-bold text-slate-400 px-2 mb-1">${sender}</span>
+                    <div class="max-w-[85%] p-3 rounded-2xl shadow-sm ${type === 'me' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-800 border border-slate-200'}">
+                        ${text.replace(/</g, "&lt;")}
+                    </div>
+                `;
+            }
             els.chatWindow.appendChild(div);
             els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
         }
@@ -189,7 +210,10 @@
         els.startBtn.onclick = () => {
             const name = els.nameIn.value.trim();
             const room = els.roomIn.value.trim();
-            if (!name || !room) return;
+            if (!name || !room) {
+                notify("Fill in all fields!");
+                return;
+            }
             els.startBtn.disabled = true;
             els.startBtn.innerText = "Connecting...";
             initMesh(name, room);
@@ -200,12 +224,17 @@
             const msg = els.chatInput.value.trim();
             if (!msg) return;
 
+            let sentCount = 0;
             connections.forEach(c => {
-                if (c.open) c.send({ type: 'chat', sender: myName, text: msg });
+                if (c.open) {
+                    c.send({ type: 'chat', sender: myName, text: msg });
+                    sentCount++;
+                }
             });
 
             addMessage(myName, msg, 'me');
             els.chatInput.value = '';
+            if (sentCount === 0 && connections.size > 0) notify("Connection lost. Try reconnecting.");
         };
 
     </script>
@@ -214,59 +243,81 @@
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
         #toast {
             position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-100px);
-            transition: 0.4s; z-index: 1000;
+            transition: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 1000;
         }
         #toast.visible { transform: translateX(-50%) translateY(0); }
+        .chat-scroll::-webkit-scrollbar { width: 4px; }
+        .chat-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
     </style>
 </head>
 <body class="bg-slate-50 h-screen overflow-hidden">
 
-    <div id="toast" class="bg-slate-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3">
-        <div class="w-2 h-2 bg-indigo-500 rounded-full animate-pulse"></div>
+    <div id="toast" class="bg-slate-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 border border-slate-700">
+        <div class="w-2 h-2 bg-indigo-500 rounded-full animate-ping"></div>
         <span id="toast-msg" class="text-sm font-bold">Connecting...</span>
     </div>
 
     <!-- Login -->
     <div id="landing" class="fixed inset-0 z-50 bg-white flex items-center justify-center p-6">
         <div class="max-w-sm w-full text-center">
-            <div class="w-16 h-16 bg-indigo-600 rounded-2xl mx-auto mb-6 flex items-center justify-center shadow-xl shadow-indigo-200">
-                <i class="fas fa-tower-broadcast text-white text-2xl"></i>
+            <div class="w-20 h-20 bg-indigo-600 rounded-3xl mx-auto mb-8 flex items-center justify-center shadow-2xl shadow-indigo-200">
+                <i class="fas fa-tower-broadcast text-white text-3xl"></i>
             </div>
-            <h1 class="text-2xl font-black text-slate-900 mb-2">Mesh Network</h1>
-            <p class="text-slate-400 text-sm mb-8 font-medium">Enter the same Room ID to find each other automatically.</p>
+            <h1 class="text-3xl font-black text-slate-900 mb-2">Mesh Network</h1>
+            <p class="text-slate-400 text-sm mb-10 font-medium px-4">Instant, decentralized chat. Use the same Room ID to find your friends.</p>
             <div class="space-y-4">
-                <input type="text" id="name-input" placeholder="Your Name" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-5 py-4 focus:border-indigo-500 outline-none font-semibold">
-                <input type="text" id="room-input" placeholder="Room ID (e.g. pizza-party)" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-5 py-4 focus:border-indigo-500 outline-none font-mono">
-                <button id="start-btn" class="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-indigo-700 transition-all">Join Mesh</button>
+                <input type="text" id="name-input" placeholder="Your Username" class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 focus:border-indigo-500 outline-none font-bold text-slate-700 transition-all">
+                <input type="text" id="room-input" placeholder="Room ID (e.g. team-chat)" class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 focus:border-indigo-500 outline-none font-mono text-indigo-600 transition-all">
+                <button id="start-btn" disabled class="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                    Initializing...
+                </button>
             </div>
         </div>
     </div>
 
-    <!-- App -->
+    <!-- App UI -->
     <div id="chat-section" class="hidden h-screen flex flex-col md:flex-row">
         <!-- Sidebar -->
-        <aside class="w-full md:w-64 bg-white border-r border-slate-200 p-6 flex flex-col shrink-0">
-            <div class="mb-6">
-                <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Room ID</label>
-                <div class="bg-indigo-50 text-indigo-700 font-mono text-sm font-bold px-3 py-2 rounded-lg" id="room-display">---</div>
-            </div>
-            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3">Connected Nodes</label>
-            <div id="peer-list" class="flex-1 overflow-y-auto"></div>
-        </aside>
-
-        <!-- Main Chat -->
-        <main class="flex-1 flex flex-col bg-white">
-            <div id="chat-window" class="flex-1 overflow-y-auto p-6 scroll-smooth">
-                <div class="h-full flex flex-col items-center justify-center text-center opacity-30">
-                    <i class="fas fa-comments text-4xl mb-4 text-indigo-200"></i>
-                    <p class="font-bold text-slate-400">Chat history starts here</p>
+        <aside class="w-full md:w-72 bg-white border-r border-slate-200 p-6 flex flex-col shrink-0">
+            <div class="mb-8">
+                <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 px-1">Active Room</label>
+                <div class="bg-indigo-50 border border-indigo-100 text-indigo-700 font-mono text-sm font-bold px-4 py-3 rounded-2xl flex items-center gap-2" id="room-display">
+                    <i class="fas fa-hashtag text-indigo-300"></i>
+                    <span>---</span>
                 </div>
             </div>
+            
+            <div class="flex-1 flex flex-col min-h-0">
+                <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4 px-1">Network Nodes</label>
+                <div id="peer-list" class="flex-1 overflow-y-auto pr-2 chat-scroll"></div>
+            </div>
+
+            <div class="mt-6 pt-6 border-t border-slate-100">
+                <button onclick="location.reload()" class="w-full py-3 text-slate-400 text-xs font-bold hover:text-red-500 transition-colors uppercase tracking-widest">
+                    <i class="fas fa-sign-out-alt mr-2"></i> Leave Room
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <main class="flex-1 flex flex-col bg-white">
+            <div id="chat-window" class="flex-1 overflow-y-auto p-6 scroll-smooth chat-scroll">
+                <div class="h-full flex flex-col items-center justify-center text-center opacity-20">
+                    <i class="fas fa-shield-halved text-5xl mb-4 text-indigo-600"></i>
+                    <p class="font-black text-slate-900 text-lg">P2P ENCRYPTED MESH</p>
+                    <p class="text-sm font-bold">Messages are sent directly node-to-node</p>
+                </div>
+            </div>
+            
             <div class="p-4 border-t border-slate-100 bg-white">
-                <form id="chat-form" class="flex gap-2 max-w-4xl mx-auto w-full">
-                    <input type="text" id="chat-input" autocomplete="off" placeholder="Type a message..." class="flex-1 bg-slate-100 rounded-xl px-5 py-3 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white border border-transparent focus:border-indigo-100 transition-all">
-                    <button class="w-12 h-12 bg-indigo-600 text-white rounded-xl shadow-md flex items-center justify-center hover:bg-indigo-700 active:scale-95 transition-all"><i class="fas fa-paper-plane"></i></button>
-                </form>
+                <div class="max-w-4xl mx-auto flex flex-col gap-2">
+                    <form id="chat-form" class="flex gap-2">
+                        <input type="text" id="chat-input" autocomplete="off" placeholder="Message the mesh..." class="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 outline-none focus:ring-4 focus:ring-indigo-500/10 focus:bg-white focus:border-indigo-300 transition-all font-medium">
+                        <button type="submit" class="w-14 h-14 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-100 flex items-center justify-center hover:bg-indigo-700 active:scale-90 transition-all">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </form>
+                </div>
             </div>
         </main>
     </div>
