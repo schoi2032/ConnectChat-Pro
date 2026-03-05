@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ConnectChat | Mesh P2P</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PeerJS client -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -56,6 +57,7 @@
             font-size: 0.95rem;
             line-height: 1.5;
             word-wrap: break-word;
+            position: relative;
         }
 
         .bubble-me {
@@ -81,6 +83,30 @@
             z-index: 1000;
         }
         #toast.visible { transform: translateX(-50%) translateY(0); }
+
+        .radar-pulse {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: rgba(99, 102, 241, 0.1);
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .radar-pulse::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border: 2px solid var(--brand);
+            border-radius: 50%;
+            animation: radar-anim 2s infinite;
+        }
+        @keyframes radar-anim {
+            0% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(3); opacity: 0; }
+        }
     </style>
 </head>
 <body class="h-screen overflow-hidden flex flex-col bg-slate-50">
@@ -90,29 +116,31 @@
         <span id="toast-msg" class="font-bold text-sm">System Ready</span>
     </div>
 
+    <!-- Setup Screen -->
     <div id="landing" class="fixed inset-0 z-[200] bg-white flex items-center justify-center p-6 overflow-y-auto">
         <div class="max-w-md w-full text-center py-10">
             <div class="logo-mark mx-auto mb-8">
                 <div class="node-ring"></div>
                 <i class="fas fa-project-diagram text-indigo-500"></i>
             </div>
-            <h1 class="text-3xl font-extrabold tracking-tighter text-slate-900 mb-2">Mesh Chat P2P</h1>
-            <p class="text-slate-400 font-medium mb-10 text-sm">Automated P2P Mesh: Choose an ID or go Random.</p>
+            <h1 class="text-3xl font-extrabold tracking-tighter text-slate-900 mb-2">ConnectChat Mesh</h1>
+            <p class="text-slate-400 font-medium mb-10 text-sm">Private, encrypted, and serverless messaging.</p>
             <div class="space-y-4 text-left">
                 <div>
                     <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 mb-1 block">Display Name</label>
                     <input type="text" id="name-input" placeholder="e.g. Alex" class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 focus:border-indigo-500 outline-none font-bold text-lg">
                 </div>
                 <div>
-                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 mb-1 block">Custom Node ID (Optional)</label>
-                    <input type="text" id="custom-id-input" placeholder="e.g. my-private-room" class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 focus:border-indigo-500 outline-none font-mono text-sm">
+                    <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 mb-1 block">Room/Node ID (Optional)</label>
+                    <input type="text" id="custom-id-input" placeholder="Leave blank for random" class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 focus:border-indigo-500 outline-none font-mono text-sm">
                 </div>
-                <button id="start-btn" class="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Launch Connection</button>
+                <button id="start-btn" class="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Go Online</button>
             </div>
         </div>
     </div>
 
-    <header class="h-20 bg-white border-b border-slate-100 px-6 flex items-center justify-between shrink-0">
+    <!-- Header -->
+    <header class="h-20 bg-white border-b border-slate-100 px-6 flex items-center justify-between shrink-0 z-10">
         <div class="flex items-center gap-4">
             <div class="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center shadow-md">
                 <i class="fas fa-users text-white text-sm"></i>
@@ -121,41 +149,52 @@
                 <h2 class="font-bold text-slate-900 leading-tight" id="header-name">Offline</h2>
                 <div class="flex items-center gap-1.5">
                     <span id="status-light" class="w-2 h-2 bg-red-400 rounded-full"></span>
-                    <span id="status-text" class="text-[9px] font-bold text-slate-400 uppercase">Connecting...</span>
+                    <span id="status-text" class="text-[9px] font-bold text-slate-400 uppercase">Disconnected</span>
                 </div>
             </div>
         </div>
         <div class="flex items-center gap-2">
-            <div class="bg-indigo-50 px-4 py-2 rounded-xl border border-indigo-100">
-                <span class="text-[8px] block font-black text-indigo-400 uppercase">Your Node ID</span>
+            <div class="bg-indigo-50 px-4 py-2 rounded-xl border border-indigo-100 flex flex-col items-center">
+                <span class="text-[7px] block font-black text-indigo-400 uppercase">Node ID</span>
                 <code id="my-id-display" class="text-xs font-bold text-indigo-700">---</code>
             </div>
-            <button id="copy-id" class="p-3 bg-white border border-slate-200 rounded-xl text-slate-500 hover:text-indigo-600"><i class="fas fa-copy"></i></button>
+            <button id="copy-id" class="p-3 bg-white border border-slate-200 rounded-xl text-slate-500 hover:text-indigo-600 transition-colors"><i class="fas fa-copy"></i></button>
         </div>
     </header>
 
     <main class="flex-1 flex overflow-hidden">
+        <!-- Sidebar -->
         <aside class="w-72 bg-white border-r border-slate-100 hidden md:flex flex-col p-6 shrink-0">
             <div class="mb-8">
-                <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">Link New Peer</label>
+                <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">Link Peer</label>
                 <div class="flex gap-2">
-                    <input type="text" id="target-id" placeholder="Paste ID" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono focus:border-indigo-500 outline-none">
-                    <button id="connect-btn" class="w-10 h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center"><i class="fas fa-plus"></i></button>
+                    <input type="text" id="target-id" placeholder="Paste ID..." class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono focus:border-indigo-500 outline-none">
+                    <button id="connect-btn" class="w-10 h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center shadow-sm hover:bg-indigo-700"><i class="fas fa-plus"></i></button>
                 </div>
             </div>
-            <div class="flex-1 overflow-y-auto" id="peer-list"></div>
+            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">Active in Mesh</label>
+            <div class="flex-1 overflow-y-auto space-y-2" id="peer-list">
+                <p class="text-[10px] text-slate-300 italic">Finding neighbors...</p>
+            </div>
         </aside>
 
+        <!-- Chat Section -->
         <section class="flex-1 flex flex-col bg-white">
-            <div id="chat-window" class="flex-1 overflow-y-auto px-6 py-8 space-y-4">
-                <div id="radar-container" class="h-full flex flex-col items-center justify-center opacity-50">
-                    <p class="text-xs font-bold uppercase tracking-widest text-slate-400">Waiting for connection...</p>
+            <div id="chat-window" class="flex-1 overflow-y-auto px-6 py-8 space-y-6">
+                <div id="radar-container" class="h-full flex flex-col items-center justify-center space-y-6">
+                    <div class="radar-pulse">
+                        <i class="fas fa-satellite-dish text-indigo-500 text-2xl"></i>
+                    </div>
+                    <div class="text-center">
+                        <p class="text-sm font-bold text-slate-800">Searching for Peers</p>
+                        <p class="text-[10px] text-slate-400 uppercase tracking-widest mt-1">Share your ID to begin a mesh session</p>
+                    </div>
                 </div>
             </div>
-            <footer class="p-4 bg-white border-t">
+            <footer class="p-4 bg-white border-t border-slate-100">
                 <form id="chat-form" class="flex gap-2 max-w-4xl mx-auto">
-                    <input type="text" id="chat-input" placeholder="Type to everyone..." class="flex-1 bg-slate-100 rounded-xl px-4 py-3 outline-none">
-                    <button type="submit" class="w-12 h-12 bg-slate-900 text-white rounded-xl"><i class="fas fa-paper-plane"></i></button>
+                    <input type="text" id="chat-input" placeholder="Message to mesh..." autocomplete="off" class="flex-1 bg-slate-100 rounded-2xl px-6 py-4 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white transition-all">
+                    <button type="submit" class="w-14 h-14 bg-slate-900 text-white rounded-2xl shadow-lg hover:bg-black transition-all"><i class="fas fa-paper-plane"></i></button>
                 </form>
             </footer>
         </section>
@@ -163,29 +202,26 @@
 
     <script>
         let peer = null;
-        let connections = new Map();
-        let knownNodeIds = new Set();
+        const connections = new Map();
         let myName = "";
         
         let audioCtx = null;
         function playPop() {
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(400, audioCtx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.1);
-            
-            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-            
-            osc.start();
-            osc.stop(audioCtx.currentTime + 0.1);
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(500, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.1);
+            } catch(e) {}
         }
 
         const els = {
@@ -219,46 +255,58 @@
 
             conn.on('open', () => {
                 connections.set(conn.peer, conn);
-                knownNodeIds.add(conn.peer);
+                
+                // Handshake includes my name and a list of all nodes I know
+                const knownIds = Array.from(connections.keys());
                 conn.send({ 
                     type: 'handshake', 
                     name: myName, 
-                    mesh: Array.from(knownNodeIds) 
+                    mesh: knownIds 
                 });
+                
                 updateUI();
-                notify("Mesh Node Linked");
+                notify("Connected to Peer");
             });
 
             conn.on('data', (data) => {
-                if (data.type === 'handshake') {
-                    conn.peerName = data.name;
-                    if (data.mesh) {
+                if (typeof data === 'object' && data.type === 'handshake') {
+                    conn.peerName = data.name || 'Peer';
+                    // Discovery logic: Try to connect to peers this node knows
+                    if (Array.isArray(data.mesh)) {
                         data.mesh.forEach(id => {
-                            if (id !== peer.id && !connections.has(id)) {
-                                setupConnection(peer.connect(id));
+                            if (id && id !== peer.id && !connections.has(id)) {
+                                const newConn = peer.connect(id);
+                                setupConnection(newConn);
                             }
                         });
                     }
                     updateUI();
-                } else {
+                } else if (typeof data === 'object' && data.type === 'chat') {
                     playPop();
-                    addMessage(conn.peerName || "Peer", data, "them");
+                    addMessage(data.sender || 'Peer', data.text || '', "them");
                 }
             });
 
-            conn.on('close', () => { connections.delete(conn.peer); updateUI(); });
-            conn.on('error', () => { connections.delete(conn.peer); updateUI(); });
+            const cleanup = () => {
+                connections.delete(conn.peer);
+                updateUI();
+            };
+
+            conn.on('close', cleanup);
+            conn.on('error', cleanup);
         }
 
         function addMessage(sender, text, type) {
-            if (!els.radar) return;
-            els.radar.style.display = 'none';
+            if (els.radar) els.radar.style.display = 'none';
             const div = document.createElement('div');
             div.className = `flex flex-col ${type === 'me' ? 'items-end' : 'items-start'}`;
             const safeText = text.toString().replace(/</g, "&lt;");
+            
             div.innerHTML = `
-                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 px-1">${sender}</span>
-                <div class="bubble ${type === 'me' ? 'bubble-me' : 'bubble-them'} shadow-sm animate-in zoom-in-95 duration-200">${safeText}</div>
+                <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 px-2">${sender}</span>
+                <div class="bubble ${type === 'me' ? 'bubble-me' : 'bubble-them'} shadow-sm">
+                    ${safeText}
+                </div>
             `;
             els.chat.appendChild(div);
             els.chat.scrollTop = els.chat.scrollHeight;
@@ -267,14 +315,25 @@
         function updateUI() {
             let html = '';
             connections.forEach(c => {
-                html += `<div class="p-3 bg-slate-50 border rounded-xl text-xs font-bold mb-2 flex items-center justify-between">
-                    <span>${c.peerName || 'Node...'}</span>
-                    <div class="w-2 h-2 bg-emerald-500 rounded-full shadow-lg shadow-emerald-200"></div>
-                </div>`;
+                html += `
+                    <div class="flex items-center gap-3 p-3 bg-slate-50 border border-slate-100 rounded-2xl">
+                        <div class="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xs">
+                            ${(c.peerName || '?').charAt(0).toUpperCase()}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-xs font-bold text-slate-700 truncate">${c.peerName || 'Connecting...'}</p>
+                            <p class="text-[8px] text-slate-400 font-mono truncate">${c.peer}</p>
+                        </div>
+                        <div class="w-2 h-2 bg-emerald-500 rounded-full shadow-lg shadow-emerald-200"></div>
+                    </div>
+                `;
             });
-            els.peerList.innerHTML = html || '<p class="text-[10px] text-slate-300">No active links</p>';
-            els.statusLight.className = connections.size > 0 ? "w-2 h-2 bg-emerald-500 rounded-full animate-pulse" : "w-2 h-2 bg-indigo-400 rounded-full";
-            els.statusText.innerText = connections.size > 0 ? `${connections.size} Active in Mesh` : "Online - Standalone";
+            
+            els.peerList.innerHTML = html || '<p class="text-[10px] text-slate-300 italic">No peers found yet</p>';
+            
+            const active = connections.size > 0;
+            els.statusLight.className = active ? "w-2 h-2 bg-emerald-500 rounded-full animate-pulse" : "w-2 h-2 bg-indigo-400 rounded-full";
+            els.statusText.innerText = active ? `${connections.size + 1} Nodes Active` : "Online Solo";
         }
 
         function startSession(name, id) {
@@ -282,41 +341,60 @@
             els.headerName.innerText = name;
             els.landing.style.display = 'none';
 
+            // Initialize Peer using public PeerJS Cloud server and updated ICE config [web:8][web:1]
             peer = new Peer(id || undefined, {
                 debug: 1,
-                config: { 'iceServers': [{ url: 'stun:stun.l.google.com:19302' }] }
+                host: '0.peerjs.com',
+                port: 443,
+                path: '/',
+                secure: true,
+                config: { iceServers: [
+                    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }
+                ] }
             });
 
             peer.on('open', (newId) => { 
                 els.myId.innerText = newId; 
-                knownNodeIds.add(newId);
-                notify("P2P Node Active");
+                notify("Node Protocol Active");
+                updateUI();
             });
 
             peer.on('error', (err) => {
+                console.error(err);
                 if (err.type === 'unavailable-id') {
-                    alert("That Node ID is already taken! Try another one.");
-                    window.location.reload();
+                    alert("ID already in use. Please refresh and pick another.");
+                } else if (err.type === 'peer-unavailable') {
+                    notify("Peer not found or offline.");
                 } else {
-                    console.error(err);
+                    notify("Peer error: " + err.type);
                 }
             });
 
+            // Handle incoming connections
             peer.on('connection', setupConnection);
-            peer.on('disconnected', () => peer.reconnect());
+            
+            // Auto-reconnect to signaling server if disconnected
+            peer.on('disconnected', () => {
+                notify("Signal lost. Reconnecting...");
+                peer.reconnect();
+            });
         }
 
         els.startBtn.onclick = () => {
             const name = els.nameIn.value.trim();
             const customId = els.customIdIn.value.trim();
-            if (!name) return alert("Nickname required");
-            startSession(name, customId);
+            if (!name) {
+                alert("Please enter a name");
+                return;
+            }
+            startSession(name, customId || undefined);
         };
 
         els.connectBtn.onclick = () => {
             const target = els.targetId.value.trim();
             if (target && peer && target !== peer.id) {
-                setupConnection(peer.connect(target));
+                const conn = peer.connect(target);
+                setupConnection(conn);
                 els.targetId.value = '';
             }
         };
@@ -325,26 +403,46 @@
             e.preventDefault();
             const msg = els.input.value.trim();
             if (!msg) return;
-            connections.forEach(c => { if (c.open) c.send(msg); });
+
+            const payload = { type: 'chat', sender: myName, text: msg };
+            let sentCount = 0;
+            connections.forEach(c => {
+                if (c.open) {
+                    c.send(payload);
+                    sentCount++;
+                }
+            });
+
             addMessage(myName, msg, "me");
             els.input.value = '';
         };
 
         document.getElementById('copy-id').onclick = () => {
             const text = els.myId.innerText;
+            if (!text || text === '---') {
+                notify("Peer ID not ready yet");
+                return;
+            }
             const el = document.createElement('textarea');
             el.value = text;
             document.body.appendChild(el);
             el.select();
             document.execCommand('copy');
             document.body.removeChild(el);
-            notify("ID Copied!");
+            notify("Node ID Copied");
         };
 
+        // Periodic maintenance to clean up dead links
         setInterval(() => {
-            connections.forEach((c, id) => { if (!c.open) connections.delete(id); });
-            updateUI();
-        }, 5000);
+            let changed = false;
+            connections.forEach((c, id) => {
+                if (!c.open) {
+                    connections.delete(id);
+                    changed = true;
+                }
+            });
+            if (changed) updateUI();
+        }, 3000);
     </script>
 </body>
 </html>
