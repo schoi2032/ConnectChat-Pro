@@ -3,26 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ConnectChat | Persistent Mesh</title>
+    <title>ConnectChat | Mesh Ready</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, collection, query, deleteDoc, serverTimestamp, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Global State
+        // CONFIG & STATE
         const firebaseConfig = JSON.parse(__firebase_config);
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'connect-chat-v2';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'connect-chat-v3';
 
         let peer = null;
         let myId = null;
-        let myName = "";
         let currentRoom = "";
-        let currentUser = null;
+        let myName = "";
         const connections = new Map();
 
         const els = {
@@ -36,242 +35,171 @@
             chatInput: document.getElementById('chat-input'),
             peerList: document.getElementById('peer-list'),
             roomDisplay: document.getElementById('room-display'),
-            toast: document.getElementById('toast'),
-            toastMsg: document.getElementById('toast-msg')
+            debugLog: document.getElementById('debug-log')
         };
 
-        function notify(msg) {
-            console.log("Notification:", msg);
-            els.toastMsg.innerText = msg;
-            els.toast.classList.add('visible');
-            setTimeout(() => els.toast.classList.remove('visible'), 4000);
+        function log(msg, type = 'info') {
+            const time = new Date().toLocaleTimeString().split(' ')[0];
+            const div = document.createElement('div');
+            div.className = `mb-1 ${type === 'err' ? 'text-red-400' : 'text-emerald-400'}`;
+            div.innerHTML = `<span class="opacity-50">[${time}]</span> ${msg}`;
+            els.debugLog.appendChild(div);
+            els.debugLog.scrollTop = els.debugLog.scrollHeight;
+            console.log(`[${type}] ${msg}`);
         }
 
-        // Initialize Auth correctly (Rule 3)
-        const startAuth = async () => {
+        // AUTH HANDLER
+        async function ensureAuth() {
+            if (auth.currentUser) return auth.currentUser;
+            log("Authenticating with Firebase...");
             try {
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
+                    return (await signInWithCustomToken(auth, __initial_auth_token)).user;
                 } else {
-                    await signInAnonymously(auth);
+                    return (await signInAnonymously(auth)).user;
                 }
             } catch (err) {
-                console.error("Auth failed:", err);
-                notify("Auth Error. Retrying...");
-                setTimeout(startAuth, 2000);
+                log("Auth failed: " + err.message, 'err');
+                throw err;
             }
-        };
+        }
 
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                currentUser = user;
-                els.startBtn.disabled = false;
-                els.startBtn.classList.remove('opacity-50');
-                els.startBtn.innerText = "Join Mesh";
-            } else {
-                startAuth();
-            }
-        });
+        // PEER ENGINE
+        async function startMesh(user) {
+            log("Starting Peer Engine...");
+            // Use user UID as Peer ID for persistence
+            peer = new Peer(user.uid, {
+                debug: 1,
+                config: { 'iceServers': [{ urls: 'stun:stun.l.google.com:19302' }] }
+            });
 
-        async function initMesh(name, room) {
-            if (!currentUser) {
-                notify("Waiting for secure auth...");
-                return;
-            }
+            peer.on('open', (id) => {
+                myId = id;
+                log("Node Online: " + id.substring(0, 8) + "...");
+                enterRoom();
+            });
 
-            // Cleanup any existing peer
-            if (peer) {
-                peer.destroy();
-                peer = null;
-            }
+            peer.on('connection', (conn) => {
+                log("Incoming link from another node");
+                handleConnection(conn);
+            });
 
-            myName = name;
-            currentRoom = room.toLowerCase().trim().replace(/[^a-z0-9-]/g, '') || "global";
+            peer.on('error', (err) => {
+                log("Peer Error: " + err.type, 'err');
+                if (err.type === 'unavailable-id') {
+                    log("ID taken, retrying with random ID...");
+                    peer.destroy();
+                    peer = new Peer(); // Fallback to random ID
+                }
+            });
+        }
+
+        async function enterRoom() {
+            els.landing.classList.add('hidden');
+            els.chatSection.classList.remove('hidden');
             els.roomDisplay.innerText = currentRoom;
             
-            notify("Initializing Peer Engine...");
-
+            log("Registering presence in room: " + currentRoom);
+            const presenceRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoom, 'peers', myId);
+            
             try {
-                // Initialize PeerJS with a fallback ID strategy if UID fails
-                peer = new Peer(currentUser.uid, {
-                    debug: 2,
-                    config: { 
-                        'iceServers': [
-                            { urls: 'stun:stun.l.google.com:19302' },
-                            { urls: 'stun:global.stun.twilio.com:3478' }
-                        ] 
-                    }
-                });
-
-                // Safety timeout for connection
-                const peerTimeout = setTimeout(() => {
-                    if (!myId) {
-                        notify("Peer server slow. Retrying...");
-                        initMesh(name, room);
-                    }
-                }, 8000);
-
-                peer.on('open', (id) => {
-                    clearTimeout(peerTimeout);
-                    myId = id;
-                    registerPresence(id);
-                    listenForPeers();
-                    els.landing.classList.add('hidden');
-                    els.chatSection.classList.remove('hidden');
-                    notify("Connected to Mesh Network");
-                });
-
-                peer.on('connection', (conn) => {
-                    notify("Incoming Node connection...");
-                    setupConnection(conn);
+                await setDoc(presenceRef, {
+                    name: myName,
+                    lastSeen: serverTimestamp()
                 });
                 
-                peer.on('error', (err) => {
-                    clearTimeout(peerTimeout);
-                    console.error("Peer Error:", err.type, err);
-                    
-                    if (err.type === 'unavailable-id' || err.type === 'peer-unavailable') {
-                        notify("Resetting session...");
-                        peer.destroy();
-                        setTimeout(() => initMesh(name, room), 2000);
-                    } else if (err.type === 'network') {
-                        notify("Network issue. Check connection.");
-                        els.startBtn.disabled = false;
-                        els.startBtn.innerText = "Retry Join";
-                    } else {
-                        notify("Error: " + err.type);
-                        els.startBtn.disabled = false;
-                        els.startBtn.innerText = "Try Again";
-                    }
+                // Watch for other peers
+                const peersCol = collection(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoom, 'peers');
+                onSnapshot(peersCol, (snap) => {
+                    snap.docChanges().forEach(change => {
+                        const peerId = change.doc.id;
+                        if (change.type === 'added' && peerId !== myId && !connections.has(peerId)) {
+                            log("New node discovered: " + peerId.substring(0, 5));
+                            connectToPeer(peerId);
+                        }
+                    });
                 });
 
-                peer.on('disconnected', () => {
-                    notify("Disconnected. Reconnecting...");
-                    peer.reconnect();
-                });
+                // Heartbeat
+                setInterval(() => {
+                    setDoc(presenceRef, { lastSeen: serverTimestamp() }, { merge: true });
+                }, 15000);
 
             } catch (err) {
-                console.error("Init Error:", err);
-                notify("System Crash. Refreshing...");
-                els.startBtn.disabled = false;
+                log("Firestore error: " + err.message, 'err');
             }
         }
 
-        async function registerPresence(peerId) {
-            if (!currentUser) return;
-            const presenceDoc = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoom, 'peers', peerId);
-            
-            const poke = async () => {
-                try {
-                    await setDoc(presenceDoc, {
-                        name: myName,
-                        uid: currentUser.uid,
-                        lastSeen: serverTimestamp()
-                    }, { merge: true });
-                } catch(e) {
-                    console.error("Presence error:", e);
-                }
-            };
-
-            await poke();
-            const heartbeat = setInterval(poke, 10000);
-
-            window.addEventListener('beforeunload', async () => {
-                clearInterval(heartbeat);
-                try { await deleteDoc(presenceDoc); } catch(e) {}
-            });
+        function connectToPeer(targetId) {
+            const conn = peer.connect(targetId, { metadata: { name: myName } });
+            handleConnection(conn);
         }
 
-        function listenForPeers() {
-            const peersRef = collection(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoom, 'peers');
-            
-            // Rule 2: Fetch all and handle locally
-            onSnapshot(peersRef, (snapshot) => {
-                snapshot.docChanges().forEach((change) => {
-                    const peerId = change.doc.id;
-                    if (change.type === "added" && peerId !== myId && !connections.has(peerId)) {
-                        console.log("Node found. Attempting link:", peerId);
-                        const conn = peer.connect(peerId, {
-                            metadata: { name: myName }
-                        });
-                        setupConnection(conn);
-                    }
-                });
-            }, (err) => {
-                console.error("Snapshot error:", err);
-                notify("Mesh sync lost.");
-            });
-        }
-
-        function setupConnection(conn) {
-            if (connections.has(conn.peer)) return;
-
+        function handleConnection(conn) {
             conn.on('open', () => {
+                log("Connected to node: " + (conn.metadata?.name || 'Unknown'));
                 connections.set(conn.peer, conn);
-                // Send metadata if not already available
-                conn.send({ type: 'handshake', name: myName });
-                updatePeerUI();
+                updatePeerList();
+                // Send name if we were the receiver
+                conn.send({ type: 'identity', name: myName });
             });
 
             conn.on('data', (data) => {
-                if (data.type === 'handshake') {
+                if (data.type === 'identity') {
                     conn.peerName = data.name;
-                    updatePeerUI();
-                    addMessage("System", `${data.name} synced to your node`, 'system');
+                    updatePeerList();
                 } else if (data.type === 'chat') {
                     addMessage(data.sender, data.text, 'them');
                 }
             });
 
-            const cleanup = () => {
+            conn.on('close', () => {
                 connections.delete(conn.peer);
-                updatePeerUI();
-            };
-
-            conn.on('close', cleanup);
-            conn.on('error', cleanup);
+                updatePeerList();
+                log("Node disconnected");
+            });
         }
 
-        function updatePeerUI() {
+        function updatePeerList() {
             let html = '';
             connections.forEach(c => {
                 html += `
-                <div class="flex items-center gap-2 p-3 bg-slate-50 rounded-xl mb-2 border border-slate-100">
-                    <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    <span class="text-sm font-bold text-slate-700 truncate">${c.peerName || 'Linked Node'}</span>
+                <div class="flex items-center gap-2 p-2 bg-slate-800 rounded-lg mb-1 border border-slate-700">
+                    <div class="w-2 h-2 bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
+                    <span class="text-xs font-bold text-slate-200">${c.peerName || 'Connecting...'}</span>
                 </div>`;
             });
-            els.peerList.innerHTML = html || '<p class="text-xs text-slate-400 text-center py-4 italic">Scanning for nodes...</p>';
+            els.peerList.innerHTML = html || '<p class="text-[10px] text-slate-500 italic text-center py-2">No nodes nearby</p>';
         }
 
         function addMessage(sender, text, type) {
             const div = document.createElement('div');
-            if (type === 'system') {
-                div.className = "flex justify-center my-4";
-                div.innerHTML = `<span class="bg-slate-100 text-slate-500 text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-widest border border-slate-200">${text}</span>`;
-            } else {
-                div.className = `flex flex-col ${type === 'me' ? 'items-end' : 'items-start'} mb-4`;
-                div.innerHTML = `
-                    <span class="text-[10px] font-bold text-slate-400 px-2 mb-1">${sender}</span>
-                    <div class="max-w-[85%] p-3 rounded-2xl shadow-sm ${type === 'me' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-800 border border-slate-200'}">
-                        ${text.replace(/</g, "&lt;")}
-                    </div>
-                `;
-            }
+            div.className = `flex flex-col ${type === 'me' ? 'items-end' : 'items-start'} mb-4 animate-slide-up`;
+            div.innerHTML = `
+                <span class="text-[9px] font-black text-slate-500 uppercase tracking-tighter mb-1 px-1">${sender}</span>
+                <div class="max-w-[90%] p-3 rounded-2xl ${type === 'me' ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-100 border border-slate-700 rounded-tl-none'}">
+                    <p class="text-sm leading-relaxed">${text.replace(/</g, "&lt;")}</p>
+                </div>
+            `;
             els.chatWindow.appendChild(div);
             els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
         }
 
-        els.startBtn.onclick = () => {
-            const name = els.nameIn.value.trim();
-            const room = els.roomIn.value.trim();
-            if (!name || !room) {
-                notify("Name and Room ID required!");
-                return;
+        // BUTTON CLICKS
+        els.startBtn.onclick = async () => {
+            myName = els.nameIn.value.trim() || "User_" + Math.floor(Math.random()*1000);
+            currentRoom = els.roomIn.value.trim().toLowerCase() || "lobby";
+            
+            els.startBtn.innerText = "LINKING...";
+            els.startBtn.classList.add('animate-pulse');
+
+            try {
+                const user = await ensureAuth();
+                await startMesh(user);
+            } catch (err) {
+                els.startBtn.innerText = "RETRY JOIN";
+                els.startBtn.classList.remove('animate-pulse');
             }
-            els.startBtn.disabled = true;
-            els.startBtn.innerText = "Connecting...";
-            initMesh(name, room);
         };
 
         els.chatForm.onsubmit = (e) => {
@@ -279,107 +207,103 @@
             const msg = els.chatInput.value.trim();
             if (!msg) return;
 
-            let sentCount = 0;
             connections.forEach(c => {
-                if (c.open) {
-                    c.send({ type: 'chat', sender: myName, text: msg });
-                    sentCount++;
-                }
+                if (c.open) c.send({ type: 'chat', sender: myName, text: msg });
             });
 
             addMessage(myName, msg, 'me');
             els.chatInput.value = '';
-            if (sentCount === 0 && connections.size > 0) notify("Link unstable. Still trying...");
         };
 
+        // Initial log
+        log("System initialized. Waiting for user input.");
     </script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
-        body { font-family: 'Plus Jakarta Sans', sans-serif; }
-        #toast {
-            position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-100px);
-            transition: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 1000;
-        }
-        #toast.visible { transform: translateX(-50%) translateY(0); }
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;500;700&display=swap');
+        body { font-family: 'Space Grotesk', sans-serif; background-color: #020617; color: #f8fafc; }
         .chat-scroll::-webkit-scrollbar { width: 4px; }
-        .chat-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
-        .animate-in { animation: fadeIn 0.3s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .chat-scroll::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-slide-up { animation: slideUp 0.2s ease-out forwards; }
     </style>
 </head>
-<body class="bg-slate-50 h-screen overflow-hidden">
+<body class="h-screen overflow-hidden flex flex-col">
 
-    <div id="toast" class="bg-slate-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 border border-slate-700">
-        <div class="w-2 h-2 bg-indigo-500 rounded-full animate-ping"></div>
-        <span id="toast-msg" class="text-sm font-bold tracking-tight">System Ready</span>
-    </div>
-
-    <!-- Login -->
-    <div id="landing" class="fixed inset-0 z-50 bg-white flex items-center justify-center p-6">
-        <div class="max-w-sm w-full text-center">
-            <div class="w-20 h-20 bg-indigo-600 rounded-3xl mx-auto mb-8 flex items-center justify-center shadow-2xl shadow-indigo-200">
-                <i class="fas fa-tower-broadcast text-white text-3xl"></i>
+    <!-- Landing / Login -->
+    <div id="landing" class="fixed inset-0 z-[100] bg-slate-950 flex items-center justify-center p-6">
+        <div class="max-w-sm w-full">
+            <div class="flex items-center justify-center mb-10">
+                <div class="relative">
+                    <div class="absolute inset-0 bg-indigo-500 blur-2xl opacity-20 animate-pulse"></div>
+                    <div class="w-16 h-16 bg-indigo-600 rounded-2xl rotate-12 flex items-center justify-center shadow-2xl relative">
+                        <svg class="w-8 h-8 text-white -rotate-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    </div>
+                </div>
             </div>
-            <h1 class="text-3xl font-black text-slate-900 mb-2">Mesh Network</h1>
-            <p class="text-slate-400 text-sm mb-10 font-medium px-4">Direct peer-to-peer communication. Enter any Room ID to sync with others.</p>
-            <div class="space-y-4">
-                <input type="text" id="name-input" placeholder="Your Handle" class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 focus:border-indigo-500 outline-none font-bold text-slate-700 transition-all">
-                <input type="text" id="room-input" placeholder="Secret Room ID" class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 focus:border-indigo-500 outline-none font-mono text-indigo-600 transition-all">
-                <button id="start-btn" disabled class="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all opacity-50 cursor-not-allowed">
-                    Initializing...
+            
+            <h1 class="text-4xl font-bold text-center mb-2 tracking-tighter">MESH<span class="text-indigo-500">CHAT</span></h1>
+            <p class="text-center text-slate-500 text-sm mb-8">Decentralized peer-to-peer relay.</p>
+
+            <div class="space-y-3">
+                <div class="bg-slate-900/50 p-1 rounded-2xl border border-slate-800">
+                    <input type="text" id="name-input" placeholder="Display Name" class="w-full bg-transparent p-4 outline-none font-medium text-slate-200">
+                </div>
+                <div class="bg-slate-900/50 p-1 rounded-2xl border border-slate-800">
+                    <input type="text" id="room-input" placeholder="Room ID (e.g. general)" class="w-full bg-transparent p-4 outline-none font-mono text-indigo-400">
+                </div>
+                <button id="start-btn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-5 rounded-2xl transition-all active:scale-95 shadow-lg shadow-indigo-900/20">
+                    JOIN MESH NETWORK
                 </button>
             </div>
-            <p class="mt-8 text-[10px] text-slate-300 font-bold uppercase tracking-widest">Powered by WebRTC & Firebase</p>
         </div>
     </div>
 
-    <!-- App UI -->
-    <div id="chat-section" class="hidden h-screen flex flex-col md:flex-row animate-in">
+    <!-- Main Content -->
+    <div id="chat-section" class="hidden flex-1 flex flex-col md:flex-row overflow-hidden">
         <!-- Sidebar -->
-        <aside class="w-full md:w-72 bg-white border-r border-slate-200 p-6 flex flex-col shrink-0">
-            <div class="mb-8">
-                <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 px-1">Network Hub</label>
-                <div class="bg-indigo-50 border border-indigo-100 text-indigo-700 font-mono text-sm font-bold px-4 py-3 rounded-2xl flex items-center justify-between" id="room-display">
-                    <span class="truncate">---</span>
-                    <i class="fas fa-link text-indigo-200 text-xs"></i>
+        <aside class="w-full md:w-64 bg-slate-900 border-r border-slate-800 flex flex-col">
+            <div class="p-4 border-b border-slate-800 bg-slate-900/50">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-3 h-3 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_10px_#10b981]"></div>
+                    <span class="text-xs font-black uppercase tracking-widest text-slate-400">Live Network</span>
                 </div>
-            </div>
-            
-            <div class="flex-1 flex flex-col min-h-0">
-                <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4 px-1">Available Nodes</label>
-                <div id="peer-list" class="flex-1 overflow-y-auto pr-2 chat-scroll"></div>
+                <div class="text-[10px] font-black text-slate-500 uppercase mb-1">Active Room</div>
+                <div id="room-display" class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-indigo-400 font-mono text-sm">---</div>
             </div>
 
-            <div class="mt-6 pt-6 border-t border-slate-100">
-                <button onclick="location.reload()" class="w-full py-4 bg-slate-50 rounded-xl text-slate-500 text-[10px] font-black hover:text-red-600 hover:bg-red-50 transition-all uppercase tracking-widest">
-                    <i class="fas fa-power-off mr-2"></i> Shutdown Node
-                </button>
+            <div class="flex-1 overflow-y-auto p-4 chat-scroll">
+                <div class="text-[10px] font-black text-slate-500 uppercase mb-3 tracking-widest">Peers Nearby</div>
+                <div id="peer-list"></div>
+            </div>
+
+            <!-- Internal Debug Console -->
+            <div class="h-32 bg-black border-t border-slate-800 p-2 overflow-hidden flex flex-col">
+                <div class="text-[8px] font-black text-slate-600 uppercase mb-1">System Console</div>
+                <div id="debug-log" class="flex-1 text-[9px] font-mono chat-scroll overflow-y-auto leading-tight"></div>
             </div>
         </aside>
 
-        <!-- Main Chat Area -->
-        <main class="flex-1 flex flex-col bg-white">
-            <div id="chat-window" class="flex-1 overflow-y-auto p-6 scroll-smooth chat-scroll bg-slate-50/30">
-                <div class="h-full flex flex-col items-center justify-center text-center opacity-20">
-                    <i class="fas fa-user-shield text-5xl mb-4 text-indigo-600"></i>
-                    <p class="font-black text-slate-900 text-lg uppercase">Node Secured</p>
-                    <p class="text-xs font-bold">End-to-End Encrypted Data Stream</p>
+        <!-- Chat Area -->
+        <main class="flex-1 flex flex-col bg-slate-950 relative">
+            <div id="chat-window" class="flex-1 overflow-y-auto p-6 chat-scroll">
+                <!-- Welcome -->
+                <div class="mb-8 p-6 bg-slate-900/30 border border-slate-800 rounded-3xl text-center">
+                    <div class="text-indigo-500 mb-2"><svg class="w-8 h-8 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg></div>
+                    <h3 class="font-bold text-slate-200">Peer Link Established</h3>
+                    <p class="text-xs text-slate-500 mt-1">Messages are sent directly between devices.</p>
                 </div>
             </div>
-            
-            <div class="p-4 border-t border-slate-100 bg-white">
-                <div class="max-w-4xl mx-auto flex flex-col gap-2">
-                    <form id="chat-form" class="flex gap-2">
-                        <input type="text" id="chat-input" autocomplete="off" placeholder="Broadcast to mesh nodes..." class="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 outline-none focus:ring-4 focus:ring-indigo-500/10 focus:bg-white focus:border-indigo-300 transition-all font-medium">
-                        <button type="submit" class="w-14 h-14 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-100 flex items-center justify-center hover:bg-indigo-700 active:scale-90 transition-all">
-                            <i class="fas fa-bolt"></i>
-                        </button>
-                    </form>
-                </div>
+
+            <div class="p-4 bg-slate-950 border-t border-slate-900">
+                <form id="chat-form" class="max-w-4xl mx-auto flex gap-2">
+                    <input type="text" id="chat-input" placeholder="Type a message..." class="flex-1 bg-slate-900 border border-slate-800 rounded-2xl px-6 py-4 outline-none focus:border-indigo-500 transition-all text-sm">
+                    <button class="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center hover:bg-indigo-500 transition-all active:scale-90">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"/></svg>
+                    </button>
+                </form>
             </div>
         </main>
     </div>
 
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </body>
 </html>
