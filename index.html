@@ -8,7 +8,7 @@
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, collection, query, deleteDoc, serverTimestamp, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Global State
@@ -41,62 +41,103 @@
         };
 
         function notify(msg) {
+            console.log("Notification:", msg);
             els.toastMsg.innerText = msg;
             els.toast.classList.add('visible');
-            setTimeout(() => els.toast.classList.remove('visible'), 3000);
+            setTimeout(() => els.toast.classList.remove('visible'), 4000);
         }
 
-        // Initialize Auth immediately
+        // Initialize Auth correctly (Rule 3)
+        const startAuth = async () => {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (err) {
+                console.error("Auth failed:", err);
+                notify("Auth Error. Retrying...");
+                setTimeout(startAuth, 2000);
+            }
+        };
+
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 currentUser = user;
                 els.startBtn.disabled = false;
+                els.startBtn.classList.remove('opacity-50');
                 els.startBtn.innerText = "Join Mesh";
             } else {
-                signInAnonymously(auth).catch(err => {
-                    console.error("Auth failed:", err);
-                    notify("Auth Error. Refresh page.");
-                });
+                startAuth();
             }
         });
 
         async function initMesh(name, room) {
             if (!currentUser) {
-                notify("Waiting for auth...");
+                notify("Waiting for secure auth...");
                 return;
+            }
+
+            // Cleanup any existing peer
+            if (peer) {
+                peer.destroy();
+                peer = null;
             }
 
             myName = name;
             currentRoom = room.toLowerCase().trim().replace(/[^a-z0-9-]/g, '') || "global";
             els.roomDisplay.innerText = currentRoom;
             
-            notify("Joining Mesh...");
+            notify("Initializing Peer Engine...");
 
             try {
-                // Initialize PeerJS with the Firebase UID
+                // Initialize PeerJS with a fallback ID strategy if UID fails
                 peer = new Peer(currentUser.uid, {
-                    debug: 1,
-                    config: { 'iceServers': [{ urls: 'stun:stun.l.google.com:19302' }] }
+                    debug: 2,
+                    config: { 
+                        'iceServers': [
+                            { urls: 'stun:stun.l.google.com:19302' },
+                            { urls: 'stun:global.stun.twilio.com:3478' }
+                        ] 
+                    }
                 });
 
+                // Safety timeout for connection
+                const peerTimeout = setTimeout(() => {
+                    if (!myId) {
+                        notify("Peer server slow. Retrying...");
+                        initMesh(name, room);
+                    }
+                }, 8000);
+
                 peer.on('open', (id) => {
+                    clearTimeout(peerTimeout);
                     myId = id;
                     registerPresence(id);
                     listenForPeers();
                     els.landing.classList.add('hidden');
                     els.chatSection.classList.remove('hidden');
-                    notify("Connected to Mesh");
+                    notify("Connected to Mesh Network");
                 });
 
-                peer.on('connection', (conn) => setupConnection(conn));
+                peer.on('connection', (conn) => {
+                    notify("Incoming Node connection...");
+                    setupConnection(conn);
+                });
                 
                 peer.on('error', (err) => {
-                    console.error("Peer Error:", err);
-                    if (err.type === 'unavailable-id') {
-                        // This happens if you refresh and the server still thinks you're there
-                        notify("Connection stale. Fixing...");
+                    clearTimeout(peerTimeout);
+                    console.error("Peer Error:", err.type, err);
+                    
+                    if (err.type === 'unavailable-id' || err.type === 'peer-unavailable') {
+                        notify("Resetting session...");
                         peer.destroy();
-                        setTimeout(() => initMesh(name, room), 1500);
+                        setTimeout(() => initMesh(name, room), 2000);
+                    } else if (err.type === 'network') {
+                        notify("Network issue. Check connection.");
+                        els.startBtn.disabled = false;
+                        els.startBtn.innerText = "Retry Join";
                     } else {
                         notify("Error: " + err.type);
                         els.startBtn.disabled = false;
@@ -104,47 +145,62 @@
                     }
                 });
 
+                peer.on('disconnected', () => {
+                    notify("Disconnected. Reconnecting...");
+                    peer.reconnect();
+                });
+
             } catch (err) {
                 console.error("Init Error:", err);
-                notify("Failed to start.");
+                notify("System Crash. Refreshing...");
                 els.startBtn.disabled = false;
             }
         }
 
         async function registerPresence(peerId) {
+            if (!currentUser) return;
             const presenceDoc = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoom, 'peers', peerId);
             
             const poke = async () => {
                 try {
                     await setDoc(presenceDoc, {
                         name: myName,
+                        uid: currentUser.uid,
                         lastSeen: serverTimestamp()
                     }, { merge: true });
-                } catch(e) {}
+                } catch(e) {
+                    console.error("Presence error:", e);
+                }
             };
 
             await poke();
-            const heartbeat = setInterval(poke, 15000);
+            const heartbeat = setInterval(poke, 10000);
 
-            window.addEventListener('beforeunload', () => {
+            window.addEventListener('beforeunload', async () => {
                 clearInterval(heartbeat);
-                deleteDoc(presenceDoc);
+                try { await deleteDoc(presenceDoc); } catch(e) {}
             });
         }
 
         function listenForPeers() {
             const peersRef = collection(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoom, 'peers');
             
+            // Rule 2: Fetch all and handle locally
             onSnapshot(peersRef, (snapshot) => {
                 snapshot.docChanges().forEach((change) => {
                     const peerId = change.doc.id;
                     if (change.type === "added" && peerId !== myId && !connections.has(peerId)) {
-                        console.log("Found peer, connecting to:", peerId);
-                        const conn = peer.connect(peerId);
+                        console.log("Node found. Attempting link:", peerId);
+                        const conn = peer.connect(peerId, {
+                            metadata: { name: myName }
+                        });
                         setupConnection(conn);
                     }
                 });
-            }, (err) => notify("Mesh sync error."));
+            }, (err) => {
+                console.error("Snapshot error:", err);
+                notify("Mesh sync lost.");
+            });
         }
 
         function setupConnection(conn) {
@@ -152,6 +208,7 @@
 
             conn.on('open', () => {
                 connections.set(conn.peer, conn);
+                // Send metadata if not already available
                 conn.send({ type: 'handshake', name: myName });
                 updatePeerUI();
             });
@@ -160,21 +217,19 @@
                 if (data.type === 'handshake') {
                     conn.peerName = data.name;
                     updatePeerUI();
-                    addMessage("System", `${data.name} joined the room`, 'system');
+                    addMessage("System", `${data.name} synced to your node`, 'system');
                 } else if (data.type === 'chat') {
                     addMessage(data.sender, data.text, 'them');
                 }
             });
 
-            conn.on('close', () => {
+            const cleanup = () => {
                 connections.delete(conn.peer);
                 updatePeerUI();
-            });
+            };
 
-            conn.on('error', (e) => {
-                connections.delete(conn.peer);
-                updatePeerUI();
-            });
+            conn.on('close', cleanup);
+            conn.on('error', cleanup);
         }
 
         function updatePeerUI() {
@@ -183,17 +238,17 @@
                 html += `
                 <div class="flex items-center gap-2 p-3 bg-slate-50 rounded-xl mb-2 border border-slate-100">
                     <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    <span class="text-sm font-bold text-slate-700 truncate">${c.peerName || 'Node...'}</span>
+                    <span class="text-sm font-bold text-slate-700 truncate">${c.peerName || 'Linked Node'}</span>
                 </div>`;
             });
-            els.peerList.innerHTML = html || '<p class="text-xs text-slate-400 text-center py-4 italic">Waiting for nodes...</p>';
+            els.peerList.innerHTML = html || '<p class="text-xs text-slate-400 text-center py-4 italic">Scanning for nodes...</p>';
         }
 
         function addMessage(sender, text, type) {
             const div = document.createElement('div');
             if (type === 'system') {
                 div.className = "flex justify-center my-4";
-                div.innerHTML = `<span class="bg-slate-100 text-slate-500 text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-widest">${text}</span>`;
+                div.innerHTML = `<span class="bg-slate-100 text-slate-500 text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-widest border border-slate-200">${text}</span>`;
             } else {
                 div.className = `flex flex-col ${type === 'me' ? 'items-end' : 'items-start'} mb-4`;
                 div.innerHTML = `
@@ -211,7 +266,7 @@
             const name = els.nameIn.value.trim();
             const room = els.roomIn.value.trim();
             if (!name || !room) {
-                notify("Fill in all fields!");
+                notify("Name and Room ID required!");
                 return;
             }
             els.startBtn.disabled = true;
@@ -234,7 +289,7 @@
 
             addMessage(myName, msg, 'me');
             els.chatInput.value = '';
-            if (sentCount === 0 && connections.size > 0) notify("Connection lost. Try reconnecting.");
+            if (sentCount === 0 && connections.size > 0) notify("Link unstable. Still trying...");
         };
 
     </script>
@@ -248,13 +303,15 @@
         #toast.visible { transform: translateX(-50%) translateY(0); }
         .chat-scroll::-webkit-scrollbar { width: 4px; }
         .chat-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        .animate-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body class="bg-slate-50 h-screen overflow-hidden">
 
     <div id="toast" class="bg-slate-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 border border-slate-700">
         <div class="w-2 h-2 bg-indigo-500 rounded-full animate-ping"></div>
-        <span id="toast-msg" class="text-sm font-bold">Connecting...</span>
+        <span id="toast-msg" class="text-sm font-bold tracking-tight">System Ready</span>
     </div>
 
     <!-- Login -->
@@ -264,57 +321,58 @@
                 <i class="fas fa-tower-broadcast text-white text-3xl"></i>
             </div>
             <h1 class="text-3xl font-black text-slate-900 mb-2">Mesh Network</h1>
-            <p class="text-slate-400 text-sm mb-10 font-medium px-4">Instant, decentralized chat. Use the same Room ID to find your friends.</p>
+            <p class="text-slate-400 text-sm mb-10 font-medium px-4">Direct peer-to-peer communication. Enter any Room ID to sync with others.</p>
             <div class="space-y-4">
-                <input type="text" id="name-input" placeholder="Your Username" class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 focus:border-indigo-500 outline-none font-bold text-slate-700 transition-all">
-                <input type="text" id="room-input" placeholder="Room ID (e.g. team-chat)" class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 focus:border-indigo-500 outline-none font-mono text-indigo-600 transition-all">
-                <button id="start-btn" disabled class="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                <input type="text" id="name-input" placeholder="Your Handle" class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 focus:border-indigo-500 outline-none font-bold text-slate-700 transition-all">
+                <input type="text" id="room-input" placeholder="Secret Room ID" class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 focus:border-indigo-500 outline-none font-mono text-indigo-600 transition-all">
+                <button id="start-btn" disabled class="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all opacity-50 cursor-not-allowed">
                     Initializing...
                 </button>
             </div>
+            <p class="mt-8 text-[10px] text-slate-300 font-bold uppercase tracking-widest">Powered by WebRTC & Firebase</p>
         </div>
     </div>
 
     <!-- App UI -->
-    <div id="chat-section" class="hidden h-screen flex flex-col md:flex-row">
+    <div id="chat-section" class="hidden h-screen flex flex-col md:flex-row animate-in">
         <!-- Sidebar -->
         <aside class="w-full md:w-72 bg-white border-r border-slate-200 p-6 flex flex-col shrink-0">
             <div class="mb-8">
-                <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 px-1">Active Room</label>
-                <div class="bg-indigo-50 border border-indigo-100 text-indigo-700 font-mono text-sm font-bold px-4 py-3 rounded-2xl flex items-center gap-2" id="room-display">
-                    <i class="fas fa-hashtag text-indigo-300"></i>
-                    <span>---</span>
+                <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 px-1">Network Hub</label>
+                <div class="bg-indigo-50 border border-indigo-100 text-indigo-700 font-mono text-sm font-bold px-4 py-3 rounded-2xl flex items-center justify-between" id="room-display">
+                    <span class="truncate">---</span>
+                    <i class="fas fa-link text-indigo-200 text-xs"></i>
                 </div>
             </div>
             
             <div class="flex-1 flex flex-col min-h-0">
-                <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4 px-1">Network Nodes</label>
+                <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4 px-1">Available Nodes</label>
                 <div id="peer-list" class="flex-1 overflow-y-auto pr-2 chat-scroll"></div>
             </div>
 
             <div class="mt-6 pt-6 border-t border-slate-100">
-                <button onclick="location.reload()" class="w-full py-3 text-slate-400 text-xs font-bold hover:text-red-500 transition-colors uppercase tracking-widest">
-                    <i class="fas fa-sign-out-alt mr-2"></i> Leave Room
+                <button onclick="location.reload()" class="w-full py-4 bg-slate-50 rounded-xl text-slate-500 text-[10px] font-black hover:text-red-600 hover:bg-red-50 transition-all uppercase tracking-widest">
+                    <i class="fas fa-power-off mr-2"></i> Shutdown Node
                 </button>
             </div>
         </aside>
 
         <!-- Main Chat Area -->
         <main class="flex-1 flex flex-col bg-white">
-            <div id="chat-window" class="flex-1 overflow-y-auto p-6 scroll-smooth chat-scroll">
+            <div id="chat-window" class="flex-1 overflow-y-auto p-6 scroll-smooth chat-scroll bg-slate-50/30">
                 <div class="h-full flex flex-col items-center justify-center text-center opacity-20">
-                    <i class="fas fa-shield-halved text-5xl mb-4 text-indigo-600"></i>
-                    <p class="font-black text-slate-900 text-lg">P2P ENCRYPTED MESH</p>
-                    <p class="text-sm font-bold">Messages are sent directly node-to-node</p>
+                    <i class="fas fa-user-shield text-5xl mb-4 text-indigo-600"></i>
+                    <p class="font-black text-slate-900 text-lg uppercase">Node Secured</p>
+                    <p class="text-xs font-bold">End-to-End Encrypted Data Stream</p>
                 </div>
             </div>
             
             <div class="p-4 border-t border-slate-100 bg-white">
                 <div class="max-w-4xl mx-auto flex flex-col gap-2">
                     <form id="chat-form" class="flex gap-2">
-                        <input type="text" id="chat-input" autocomplete="off" placeholder="Message the mesh..." class="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 outline-none focus:ring-4 focus:ring-indigo-500/10 focus:bg-white focus:border-indigo-300 transition-all font-medium">
+                        <input type="text" id="chat-input" autocomplete="off" placeholder="Broadcast to mesh nodes..." class="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 outline-none focus:ring-4 focus:ring-indigo-500/10 focus:bg-white focus:border-indigo-300 transition-all font-medium">
                         <button type="submit" class="w-14 h-14 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-100 flex items-center justify-center hover:bg-indigo-700 active:scale-90 transition-all">
-                            <i class="fas fa-paper-plane"></i>
+                            <i class="fas fa-bolt"></i>
                         </button>
                     </form>
                 </div>
