@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ConnectChat | P2P Messenger</title>
+    <title>ConnectChat | Pro</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -12,10 +12,13 @@
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f0f7ff;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
         }
 
         .chat-container {
-            height: calc(100vh - 180px);
+            height: calc(100vh - 140px);
         }
 
         .message-bubble {
@@ -44,10 +47,10 @@
         }
     </style>
 </head>
-<body class="flex items-center justify-center min-h-screen p-4">
+<body class="flex items-center justify-center h-screen w-screen bg-blue-50">
 
     <!-- Auth / Login Screen -->
-    <div id="auth-screen" class="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 animate-fade-in">
+    <div id="auth-screen" class="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 animate-fade-in m-4">
         <div class="text-center mb-8">
             <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4 shadow-lg shadow-blue-200">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -65,7 +68,7 @@
             </div>
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">Custom ID</label>
-                <input type="text" id="peer-id" placeholder="Choose a unique ID (e.g. user123)" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all">
+                <input type="text" id="peer-id" placeholder="Choose a unique ID" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all">
             </div>
             <button onclick="initSession()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all transform active:scale-95 shadow-md shadow-blue-100 mt-4">
                 Initialize Session
@@ -74,24 +77,24 @@
     </div>
 
     <!-- Main Chat Screen -->
-    <div id="chat-screen" class="hidden w-full max-w-4xl bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden h-[90vh] animate-fade-in">
+    <div id="chat-screen" class="hidden w-screen h-screen bg-white flex flex-col overflow-hidden animate-fade-in">
         <!-- Header -->
-        <div class="bg-blue-600 p-4 md:p-6 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="bg-blue-600 p-4 md:px-8 text-white flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-lg z-10">
             <div class="flex items-center gap-4">
-                <div class="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
-                    <span id="user-initial" class="text-xl font-bold">U</span>
+                <div class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+                    <span id="user-initial" class="text-lg font-bold">U</span>
                 </div>
                 <div>
-                    <h2 id="display-name" class="font-bold text-lg leading-tight">...</h2>
-                    <p class="text-blue-100 text-xs flex items-center gap-1">
-                        <span class="w-2 h-2 bg-green-400 rounded-full"></span>
-                        My ID: <span id="my-id-display" class="font-mono bg-blue-700 px-1 rounded">...</span>
+                    <h2 id="display-name" class="font-bold text-base leading-tight">...</h2>
+                    <p class="text-blue-100 text-[10px] flex items-center gap-1 uppercase tracking-wider">
+                        <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                        ID: <span id="my-id-display" class="font-mono bg-blue-700 px-1 rounded">...</span>
                     </p>
                 </div>
             </div>
             <div class="flex items-center gap-2">
-                <input type="text" id="target-id" placeholder="Enter friend's ID" class="bg-blue-700/50 border border-blue-400/30 rounded-lg px-3 py-2 text-sm placeholder-blue-200 outline-none focus:bg-blue-700 transition-all">
-                <button onclick="connectToPeer()" class="bg-white text-blue-600 px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-50 transition-all flex items-center gap-2">
+                <input type="text" id="target-id" placeholder="Enter friend's ID" class="bg-blue-700/50 border border-blue-400/30 rounded-lg px-3 py-2 text-sm placeholder-blue-200 outline-none focus:bg-blue-700 transition-all w-full md:w-48">
+                <button onclick="connectToPeer()" class="bg-white text-blue-600 px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-50 transition-all flex items-center gap-2 whitespace-nowrap">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
                     </svg>
@@ -101,22 +104,30 @@
         </div>
 
         <!-- Messages Area -->
-        <div id="messages-container" class="flex-grow p-6 overflow-y-auto custom-scrollbar space-y-4 bg-slate-50">
-            <div class="text-center py-10">
-                <p class="text-gray-400 text-sm">Welcome to ConnectChat. Share your ID with friends to start a P2P conversation.</p>
+        <div id="messages-container" class="flex-grow p-4 md:p-8 overflow-y-auto custom-scrollbar space-y-4 bg-slate-50">
+            <div class="max-w-3xl mx-auto text-center py-20">
+                <div class="bg-blue-100 text-blue-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                </div>
+                <h3 class="text-xl font-bold text-gray-800">Your secure P2P session is active</h3>
+                <p class="text-gray-500 text-sm mt-2">Connect with others by entering their unique ID above. Your group will automatically expand as more people join!</p>
             </div>
         </div>
 
         <!-- Input Area -->
         <div class="p-4 bg-white border-t border-gray-100">
-            <form id="chat-form" onsubmit="sendMessage(event)" class="flex gap-2">
-                <input type="text" id="message-input" placeholder="Type a message..." class="flex-grow px-4 py-3 bg-gray-100 rounded-xl border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all" autocomplete="off">
-                <button type="submit" class="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition-all transform active:scale-90">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                    </svg>
-                </button>
-            </form>
+            <div class="max-w-4xl mx-auto">
+                <form id="chat-form" onsubmit="sendMessage(event)" class="flex gap-2">
+                    <input type="text" id="message-input" placeholder="Type a message..." class="flex-grow px-4 py-4 bg-gray-100 rounded-2xl border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-inner" autocomplete="off">
+                    <button type="submit" class="bg-blue-600 text-white p-4 rounded-2xl hover:bg-blue-700 transition-all transform active:scale-90 shadow-lg shadow-blue-200">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                        </svg>
+                    </button>
+                </form>
+            </div>
         </div>
     </div>
 
@@ -125,8 +136,9 @@
 
     <script>
         let peer;
-        let connections = {}; // Track all active peer connections
+        let connections = {}; 
         let userData = { name: '', id: '' };
+        let heartbeatInterval;
 
         const authScreen = document.getElementById('auth-screen');
         const chatScreen = document.getElementById('chat-screen');
@@ -134,7 +146,7 @@
         const notifSound = document.getElementById('notif-sound');
 
         /**
-         * Initialize PeerJS Session
+         * Initialize PeerJS Session with Reliable STUN Servers
          */
         function initSession() {
             const name = document.getElementById('username').value.trim();
@@ -148,18 +160,27 @@
             userData.name = name;
             userData.id = id;
 
-            // Initialize PeerJS
-            // No API key needed for public cloud server
-            peer = new Peer(id);
+            // Initialize PeerJS with public STUN servers for better connectivity
+            peer = new Peer(id, {
+                config: {
+                    'iceServers': [
+                        { url: 'stun:stun.l.google.com:19302' },
+                        { url: 'stun:stun1.l.google.com:19302' },
+                        { url: 'stun:stun2.l.google.com:19302' }
+                    ]
+                }
+            });
 
             peer.on('open', (id) => {
-                console.log('My peer ID is: ' + id);
                 document.getElementById('display-name').innerText = userData.name;
                 document.getElementById('my-id-display').innerText = id;
                 document.getElementById('user-initial').innerText = userData.name.charAt(0).toUpperCase();
                 
                 authScreen.classList.add('hidden');
                 chatScreen.classList.remove('hidden');
+
+                // Start Heartbeat to prevent expiration
+                startHeartbeat();
             });
 
             peer.on('connection', (conn) => {
@@ -167,13 +188,32 @@
             });
 
             peer.on('error', (err) => {
-                console.error(err);
+                console.error('Peer Error:', err.type);
                 if (err.type === 'unavailable-id') {
-                    alert('This ID is already taken. Please choose another one.');
-                } else {
-                    alert('PeerJS Error: ' + err.type);
+                    alert('This ID is already taken. Please refresh and choose another one.');
+                } else if (err.type === 'peer-unavailable') {
+                    alert('The ID you tried to connect to does not exist or is offline.');
                 }
             });
+
+            peer.on('disconnected', () => {
+                // Reconnect if the server drops us
+                peer.reconnect();
+            });
+        }
+
+        /**
+         * Start Heartbeat to keep connections alive
+         */
+        function startHeartbeat() {
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            heartbeatInterval = setInterval(() => {
+                Object.values(connections).forEach(conn => {
+                    if (conn.open) {
+                        conn.send({ type: 'ping' });
+                    }
+                });
+            }, 5000); // Send ping every 5 seconds
         }
 
         /**
@@ -183,16 +223,15 @@
             const targetId = document.getElementById('target-id').value.trim();
             
             if (!targetId) return;
-            if (targetId === userData.id) {
-                alert("You cannot connect to yourself!");
-                return;
-            }
+            if (targetId === userData.id) return;
             if (connections[targetId]) {
-                alert("Already connected to this user.");
+                alert("Already connected!");
                 return;
             }
 
-            const conn = peer.connect(targetId);
+            const conn = peer.connect(targetId, {
+                reliable: true
+            });
             setupConnection(conn);
             document.getElementById('target-id').value = '';
         }
@@ -202,7 +241,6 @@
          */
         function setupConnection(conn) {
             conn.on('open', () => {
-                // If this is a new connection, register it
                 if (!connections[conn.peer]) {
                     connections[conn.peer] = conn;
                     
@@ -215,7 +253,7 @@
                         existingPeers: peerIds
                     });
 
-                    addSystemMessage(`${conn.peer} joined the conversation.`);
+                    addSystemMessage(`${conn.peer} joined.`);
                 }
             });
 
@@ -225,29 +263,31 @@
                     playSound();
                 } else if (data.type === 'system') {
                     handleSystemMessage(data, conn);
+                } else if (data.type === 'ping') {
+                    // Just a heartbeat, do nothing
                 }
             });
 
             conn.on('close', () => {
-                addSystemMessage(`${conn.peer} disconnected.`);
+                addSystemMessage(`${conn.peer} left.`);
                 delete connections[conn.peer];
             });
             
-            conn.on('error', () => {
+            conn.on('error', (err) => {
+                console.error("Connection error:", err);
                 delete connections[conn.peer];
             });
         }
 
         /**
-         * Handle System Logic (Automatic Group Expansion)
+         * Automatic Group Expansion Logic
          */
         function handleSystemMessage(data, conn) {
             if (data.action === 'handshake') {
-                // If the new peer tells us about other peers, connect to them too
                 if (data.existingPeers && data.existingPeers.length > 0) {
                     data.existingPeers.forEach(peerId => {
                         if (peerId !== userData.id && !connections[peerId]) {
-                            const newConn = peer.connect(peerId);
+                            const newConn = peer.connect(peerId, { reliable: true });
                             setupConnection(newConn);
                         }
                     });
@@ -268,11 +308,9 @@
             const messageObj = {
                 type: 'chat',
                 sender: userData.name,
-                text: text,
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                text: text
             };
 
-            // Broadcast to all peers
             Object.values(connections).forEach(conn => {
                 if (conn.open) {
                     conn.send(messageObj);
@@ -289,14 +327,14 @@
         function renderMessage(sender, text, isMe) {
             const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             const msgDiv = document.createElement('div');
-            msgDiv.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-1 animate-fade-in`;
+            msgDiv.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-1 animate-fade-in max-w-4xl mx-auto w-full px-4`;
             
             msgDiv.innerHTML = `
-                <span class="text-xs font-semibold text-gray-500 px-2">${sender}</span>
-                <div class="message-bubble px-4 py-2 rounded-2xl ${isMe ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-gray-800 shadow-sm border border-gray-100 rounded-tl-none'}">
-                    <p class="text-sm">${escapeHTML(text)}</p>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-2">${sender}</span>
+                <div class="message-bubble px-5 py-3 rounded-2xl shadow-sm ${isMe ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'}">
+                    <p class="text-sm md:text-base leading-relaxed">${escapeHTML(text)}</p>
                 </div>
-                <span class="text-[10px] text-gray-400 px-2">${time}</span>
+                <span class="text-[9px] text-gray-400 px-2 italic">${time}</span>
             `;
 
             messagesContainer.appendChild(msgDiv);
@@ -305,15 +343,15 @@
 
         function addSystemMessage(text) {
             const msgDiv = document.createElement('div');
-            msgDiv.className = "flex justify-center my-2";
-            msgDiv.innerHTML = `<span class="bg-gray-200 text-gray-500 text-[10px] uppercase tracking-widest font-bold px-3 py-1 rounded-full">${text}</span>`;
+            msgDiv.className = "flex justify-center my-4 w-full";
+            msgDiv.innerHTML = `<span class="bg-blue-50 text-blue-400 text-[9px] uppercase tracking-[0.2em] font-black px-4 py-1.5 rounded-full border border-blue-100">${text}</span>`;
             messagesContainer.appendChild(msgDiv);
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
         function playSound() {
             notifSound.currentTime = 0;
-            notifSound.play().catch(e => console.log("Audio play blocked by browser. Interaction required."));
+            notifSound.play().catch(() => {});
         }
 
         function escapeHTML(str) {
