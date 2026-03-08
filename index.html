@@ -3,446 +3,372 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ConnectPro | The Blue Hub</title>
-    <!-- Favicon link element -->
-    <link id="dynamic-favicon" rel="icon" type="image/svg+xml" href="">
-    <!-- Lucide Icons via CDN -->
+    <title>ConnectPro | Secure Connections</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        /* PURE CSS STYLING - NO EXTERNAL FRAMEWORKS REQUIRED */
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
-
-        :root {
-            --primary: #2563eb;
-            --primary-dark: #1e3a8a;
-            --primary-light: #dbeafe;
-            --bg-main: #f0f7ff;
-            --white: #ffffff;
-            --text-dark: #0f172a;
-            --text-muted: #64748b;
-            --sidebar-bg: #0f172a;
-            --radius: 1.5rem;
-            --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Plus Jakarta Sans', sans-serif;
-        }
-
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        
         body {
-            background-color: var(--bg-main);
-            height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            font-family: 'Plus Jakarta Sans', sans-serif;
             overflow: hidden;
+            background-color: #f0f7ff;
         }
 
-        /* Utility */
-        .hidden { display: none !important; }
-
-        /* Auth Overlays */
-        #auth-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(15, 23, 42, 0.95);
-            backdrop-filter: blur(8px);
-            z-index: 1000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(37, 99, 235, 0.2);
+            border-radius: 10px;
         }
 
-        .auth-card {
-            background: var(--white);
-            width: 100%;
-            max-width: 400px;
-            padding: 40px;
-            border-radius: 2.5rem;
-            text-align: center;
-            box-shadow: var(--shadow);
-            animation: popIn 0.3s ease-out;
+        .sidebar-active {
+            background-color: rgba(255, 255, 255, 0.15);
+            color: #ffffff;
+            box-shadow: inset 4px 0 0 #60a5fa;
+        }
+
+        .modal-overlay {
+            background-color: rgba(7, 25, 53, 0.9);
+            backdrop-filter: blur(12px);
+        }
+
+        .chat-bubble-me {
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            color: white;
+            border-radius: 20px 20px 4px 20px;
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.2);
+        }
+
+        .chat-bubble-them {
+            background-color: #ffffff;
+            color: #1e3a8a;
+            border-radius: 20px 20px 20px 4px;
+            border: 1px solid #dbeafe;
+        }
+
+        .blue-gradient-header {
+            background: linear-gradient(135deg, #1e3a8a, #2563eb);
+            color: white;
         }
 
         @keyframes popIn {
-            from { transform: scale(0.9); opacity: 0; }
-            to { transform: scale(1); opacity: 1; }
+            0% { transform: scale(0.95); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
         }
 
-        .icon-box {
-            background: var(--primary);
-            color: white;
-            width: 60px;
-            height: 60px;
-            border-radius: 1.25rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 20px;
+        .animate-pop {
+            animation: popIn 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
         }
 
-        /* Buttons & Inputs */
-        .btn {
-            width: 100%;
-            padding: 16px;
-            border-radius: 1rem;
-            border: none;
-            font-weight: 800;
+        /* Avatar Selection Styles */
+        .avatar-option {
             cursor: pointer;
-            transition: all 0.2s;
-            font-size: 1rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
+            transition: all 0.2s ease;
+            border: 4px solid transparent;
         }
-
-        .btn-primary { background: var(--primary); color: white; }
-        .btn-primary:hover { background: var(--primary-dark); }
-        .btn-ghost { background: var(--primary-light); color: var(--primary); }
-        .btn-ghost:hover { background: #c3ddfd; }
-
-        .input-group {
-            margin-bottom: 15px;
-            text-align: left;
+        .avatar-option.selected {
+            border-color: #2563eb;
+            background-color: #dbeafe;
+            transform: scale(1.05);
         }
-
-        .input-group label {
-            font-size: 10px;
-            text-transform: uppercase;
-            font-weight: 800;
-            color: var(--text-muted);
-            margin-left: 5px;
-            letter-spacing: 1px;
-        }
-
-        input {
-            width: 100%;
-            padding: 14px 20px;
-            border-radius: 1rem;
-            border: 1px solid #e2e8f0;
-            background: #f8fafc;
-            outline: none;
-            font-weight: 600;
-            margin-top: 5px;
-        }
-
-        input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
-
-        /* Main Layout */
-        #main-app {
-            width: 95vw;
-            height: 90vh;
-            background: var(--white);
-            border-radius: 3rem;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            box-shadow: var(--shadow);
-            border: 1px solid rgba(0,0,0,0.05);
-        }
-
-        header {
-            background: linear-gradient(135deg, var(--primary-dark), var(--primary));
-            padding: 15px 30px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            color: white;
-        }
-
-        .user-pill {
-            background: rgba(255,255,255,0.1);
-            padding: 6px 15px;
-            border-radius: 1rem;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-weight: 700;
-            font-size: 14px;
-        }
-
-        .user-pill img { width: 24px; height: 24px; border-radius: 6px; background: white; }
-
-        .content-area { display: flex; flex: 1; overflow: hidden; }
-
-        /* Sidebar */
-        aside {
-            width: 280px;
-            background: var(--sidebar-bg);
-            color: #94a3b8;
-            display: flex;
-            flex-direction: column;
-            padding: 20px;
-        }
-
-        .nav-btn {
-            width: 100%;
-            padding: 15px 20px;
-            border-radius: 1rem;
-            border: none;
-            background: transparent;
-            color: inherit;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            font-weight: 700;
-            cursor: pointer;
-            margin-bottom: 5px;
-            transition: 0.2s;
-        }
-
-        .nav-btn:hover { background: rgba(255,255,255,0.05); color: white; }
-        .nav-btn.active { background: rgba(255,255,255,0.1); color: white; }
-
-        .sidebar-label {
-            font-size: 10px;
-            text-transform: uppercase;
-            font-weight: 800;
-            letter-spacing: 2px;
-            margin: 20px 0 10px 10px;
-            color: #475569;
-        }
-
-        /* Room List */
-        #rooms-list { flex: 1; overflow-y: auto; }
-        .room-item {
-            padding: 12px 15px;
-            border-radius: 0.75rem;
-            cursor: pointer;
-            font-weight: 600;
-            font-size: 14px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 4px;
-        }
-        .room-item:hover { background: rgba(255,255,255,0.05); }
-        .room-item.active { background: var(--primary); color: white; }
-
-        /* Main View Container */
-        main { flex: 1; display: flex; flex-direction: column; position: relative; }
-
-        /* Chat UI */
-        #chat-container { display: flex; flex-direction: column; height: 100%; }
-        #messages { flex: 1; overflow-y: auto; padding: 30px; display: flex; flex-direction: column; gap: 15px; background: #f8fafc; }
-        
-        .msg { max-width: 75%; padding: 15px 20px; border-radius: 1.25rem; font-weight: 600; line-height: 1.5; position: relative; }
-        .msg.me { align-self: flex-end; background: var(--primary); color: white; border-bottom-right-radius: 4px; }
-        .msg.them { align-self: flex-start; background: var(--white); color: var(--text-dark); border-bottom-left-radius: 4px; border: 1px solid #e2e8f0; }
-        .msg-info { font-size: 10px; font-weight: 800; text-transform: uppercase; margin-bottom: 4px; opacity: 0.7; }
-
-        .chat-input-area { padding: 25px; background: var(--white); border-top: 1px solid #e2e8f0; display: flex; gap: 15px; }
-        .chat-input-area input { margin-top: 0; flex: 1; padding: 18px 25px; border-radius: 2rem; background: #f1f5f9; border: none; }
-
-        /* Empty States */
-        .empty-state { flex: 1; display: flex; flex-direction: center; align-items: center; justify-content: center; flex-direction: column; text-align: center; color: var(--text-muted); }
-        .empty-state h2 { color: var(--primary-dark); font-weight: 800; margin-top: 20px; }
-
-        /* Modal */
-        #modal-container {
-            position: fixed;
-            inset: 0;
-            background: rgba(15, 23, 42, 0.8);
-            z-index: 2000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-
-        .modal {
-            background: white;
-            padding: 40px;
-            border-radius: 2.5rem;
-            width: 100%;
-            max-width: 450px;
-            box-shadow: var(--shadow);
-        }
-
-        /* Avatar Selection */
-        .avatar-grid {
-            display: grid;
-            grid-template-cols: repeat(4, 1fr);
-            gap: 10px;
-            margin-bottom: 20px;
-            max-height: 150px;
-            overflow-y: auto;
-            padding: 5px;
-        }
-        .avatar-item {
-            cursor: pointer;
-            border: 3px solid transparent;
-            border-radius: 1rem;
-            padding: 5px;
-            background: var(--bg-main);
-        }
-        .avatar-item img { width: 100%; height: auto; }
-        .avatar-item.active { border-color: var(--primary); background: var(--primary-light); }
-
-        .error-text { color: #ef4444; font-size: 12px; font-weight: 700; text-align: center; margin-top: 10px; display: none; }
     </style>
 </head>
-<body>
+<body class="h-screen flex items-center justify-center p-0 md:p-4">
 
-    <!-- AUTH OVERLAY -->
-    <div id="auth-overlay">
-        <!-- Login Form -->
-        <div id="login-form" class="auth-card">
-            <div class="icon-box"><i data-lucide="zap"></i></div>
-            <h1 style="font-weight: 900; font-size: 1.8rem; color: var(--primary-dark)">ConnectPro</h1>
-            <p style="color: var(--text-muted); font-weight: 600; margin-bottom: 30px;">Login to your secure node</p>
+    <!-- Auth System Overlay -->
+    <div id="auth-overlay" class="fixed inset-0 z-[100] modal-overlay flex items-center justify-center p-4">
+        <!-- Landing / Login Picker -->
+        <div id="login-container" class="bg-white rounded-[3rem] p-10 max-w-md w-full shadow-2xl animate-pop text-center">
+            <div class="flex flex-col items-center mb-8">
+                <div class="bg-blue-600 p-5 rounded-[2rem] text-white mb-4 shadow-xl shadow-blue-500/40">
+                    <i data-lucide="zap" class="w-10 h-10"></i>
+                </div>
+                <h1 class="text-3xl font-black text-blue-900 tracking-tight">ConnectPro</h1>
+                <p class="text-blue-500 font-bold">Secure Global Interface</p>
+            </div>
+
+            <div id="accounts-list-section" class="mb-6 hidden text-left">
+                <label class="block text-[10px] font-black text-blue-400 uppercase tracking-widest mb-4 text-center">Active Sessions</label>
+                <div id="accounts-grid" class="space-y-3 max-h-48 overflow-y-auto custom-scrollbar p-1"></div>
+                <div class="relative my-8">
+                    <div class="absolute inset-0 flex items-center"><span class="w-full border-t border-blue-50"></span></div>
+                    <div class="relative flex justify-center text-xs uppercase"><span class="bg-white px-4 text-blue-300 font-bold tracking-widest">or</span></div>
+                </div>
+            </div>
             
-            <div id="account-list" style="margin-bottom: 20px; display: flex; flex-direction: column; gap: 10px;"></div>
-            
-            <button class="btn btn-primary" onclick="showRegister()">
-                <i data-lucide="user-plus" style="width: 18px"></i> New Identity
+            <button onclick="showRegistration()" class="w-full flex items-center justify-center gap-3 bg-blue-50 hover:bg-blue-100 text-blue-600 font-black py-5 rounded-2xl transition-all border border-blue-100">
+                <i data-lucide="user-plus" class="w-5 h-5"></i>
+                Create New Identity
             </button>
         </div>
 
-        <!-- Register Form -->
-        <div id="register-form" class="auth-card hidden">
-            <h2 style="font-weight: 800; margin-bottom: 10px;">Create Identity</h2>
-            <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">Pick your digital representative</p>
+        <!-- Registration Form -->
+        <div id="register-container" class="hidden bg-white rounded-[3rem] p-10 max-w-md w-full shadow-2xl animate-pop">
+            <button onclick="showLogin()" class="mb-6 text-blue-400 hover:text-blue-900 flex items-center gap-2 font-black text-xs uppercase tracking-widest transition-colors">
+                <i data-lucide="chevron-left" class="w-4 h-4"></i> Back
+            </button>
+            <div class="text-center mb-8">
+                <h2 class="text-2xl font-black text-blue-900">New Identity</h2>
+                <p class="text-sm text-blue-400 font-bold">Pick your digital representative</p>
+            </div>
             
-            <div class="avatar-grid" id="avatar-grid"></div>
+            <div class="space-y-6">
+                <!-- Diverse Avatar Grid -->
+                <div id="reg-avatar-grid" class="grid grid-cols-4 gap-3 max-h-40 overflow-y-auto custom-scrollbar p-1">
+                    <!-- Avatars injected by JS -->
+                </div>
 
-            <div class="input-group">
-                <label>Full Name</label>
-                <input type="text" id="reg-name" placeholder="John Doe">
-            </div>
-            <div class="input-group">
-                <label>Username</label>
-                <input type="text" id="reg-user" placeholder="johndoe">
-            </div>
+                <div class="space-y-4">
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-black text-blue-400 uppercase tracking-widest ml-4">Full Name</label>
+                        <input type="text" id="reg-name" placeholder="E.g. Taylor Swift" class="w-full px-6 py-4 rounded-2xl bg-blue-50 border-none focus:ring-2 focus:ring-blue-500 outline-none font-bold text-blue-900 placeholder-blue-300">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-black text-blue-400 uppercase tracking-widest ml-4">Mail ID</label>
+                        <div class="relative">
+                            <input type="text" id="reg-handle" placeholder="username" class="w-full px-6 py-4 rounded-2xl bg-blue-50 border-none focus:ring-2 focus:ring-blue-500 outline-none pr-32 font-bold text-blue-900 placeholder-blue-300">
+                            <span class="absolute right-6 top-1/2 -translate-y-1/2 text-blue-400 font-black text-xs">@connect.pro</span>
+                        </div>
+                    </div>
+                </div>
 
-            <button class="btn btn-primary" onclick="handleRegister()">Launch Account</button>
-            <button class="btn" style="color: var(--text-muted); font-size: 12px; margin-top: 10px;" onclick="showLogin()">Back to login</button>
+                <button onclick="handleRegister()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-5 rounded-2xl transition-all shadow-xl shadow-blue-500/40 text-lg">
+                    Initialize Account
+                </button>
+            </div>
         </div>
     </div>
 
-    <!-- MAIN APP -->
-    <div id="main-app" class="hidden">
-        <header>
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <i data-lucide="zap"></i>
-                <span style="font-weight: 800; font-size: 1.2rem; letter-spacing: -0.5px;">ConnectPro</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 15px;">
-                <div class="user-pill">
-                    <img id="header-avatar" src="">
-                    <span id="header-name">User</span>
+    <!-- Main App Interface -->
+    <div id="main-app" class="hidden w-full h-full max-w-7xl bg-white md:rounded-[3rem] shadow-2xl flex flex-col overflow-hidden border border-blue-100">
+        
+        <!-- App Header -->
+        <header class="blue-gradient-header px-8 py-5 flex items-center justify-between shrink-0">
+            <div class="flex items-center gap-4">
+                <div class="bg-white/20 p-2.5 rounded-2xl text-white backdrop-blur-md">
+                    <i data-lucide="zap" class="w-6 h-6"></i>
                 </div>
-                <button onclick="logout()" style="background: rgba(255,255,255,0.1); border: none; color: white; padding: 8px; border-radius: 10px; cursor: pointer;"><i data-lucide="log-out" style="width: 18px"></i></button>
+                <span class="font-black text-2xl tracking-tighter">ConnectPro</span>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="bg-white/10 px-5 py-2.5 rounded-2xl flex items-center gap-3 border border-white/10 backdrop-blur-md">
+                    <img id="header-avatar" src="" class="w-7 h-7 rounded-xl object-cover bg-white">
+                    <span id="header-name" class="text-sm font-bold"></span>
+                </div>
+                <button onclick="logout()" class="w-12 h-12 flex items-center justify-center bg-white/10 hover:bg-red-500 rounded-2xl transition-all">
+                    <i data-lucide="log-out" class="w-5 h-5 text-white"></i>
+                </button>
             </div>
         </header>
 
-        <div class="content-area">
-            <aside>
-                <button class="nav-btn active" onclick="setMode('chat')">
-                    <i data-lucide="messages-square"></i> Channels
-                </button>
-                
-                <div class="sidebar-label">Active Nodes</div>
-                <div id="rooms-list"></div>
+        <div class="flex flex-1 overflow-hidden">
+            <!-- Sidebar -->
+            <aside class="w-20 md:w-72 bg-blue-900 text-blue-100 flex flex-col shrink-0">
+                <div class="p-6 space-y-3">
+                    <button onclick="setTab('mail')" id="tab-mail" class="w-full flex items-center gap-5 px-6 py-5 rounded-2xl transition-all font-black sidebar-active">
+                        <i data-lucide="mail" class="w-5 h-5"></i>
+                        <span class="hidden md:inline text-sm">Transmissions</span>
+                    </button>
+                    <button onclick="setTab('chat')" id="tab-chat" class="w-full flex items-center gap-5 px-6 py-5 rounded-2xl transition-all font-black hover:bg-white/5">
+                        <i data-lucide="messages-square" class="w-5 h-5"></i>
+                        <span class="hidden md:inline text-sm">Nodes</span>
+                    </button>
+                </div>
 
-                <div style="display: grid; grid-cols: 1; gap: 8px; margin-top: 10px;">
-                    <button class="btn btn-ghost" onclick="openRoomModal('join')" style="padding: 12px; font-size: 12px;">
-                        <i data-lucide="arrow-right-circle" style="width: 14px"></i> Join Node
-                    </button>
-                    <button class="btn btn-primary" onclick="openRoomModal('create')" style="padding: 12px; font-size: 12px; background: #3b82f6;">
-                        <i data-lucide="plus" style="width: 14px"></i> New Node
-                    </button>
+                <!-- Contextual Nav -->
+                <div class="flex-1 flex flex-col px-4 overflow-hidden mt-4">
+                    <div class="h-px bg-white/10 mb-6 mx-2"></div>
+                    
+                    <!-- Mail Folders -->
+                    <div id="mail-nav" class="space-y-1">
+                        <div class="px-6 text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-4">Mail Hub</div>
+                        <button class="w-full flex items-center justify-between px-6 py-4 rounded-2xl bg-white/5 font-bold text-xs">
+                            <div class="flex items-center gap-3">
+                                <i data-lucide="inbox" class="w-4 h-4"></i>
+                                <span class="hidden md:inline">Inbox</span>
+                            </div>
+                            <span id="mail-count" class="bg-blue-500 px-2 py-0.5 rounded-lg text-[10px]">0</span>
+                        </button>
+                    </div>
+
+                    <!-- Chat Nodes -->
+                    <div id="chat-nav" class="hidden flex-1 flex flex-col overflow-hidden">
+                        <div class="px-6 text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-4">Active Nodes</div>
+                        <div id="rooms-list" class="flex-1 overflow-y-auto custom-scrollbar space-y-1 pr-2">
+                            <!-- Injected Rooms -->
+                        </div>
+                        <div class="mt-4 grid grid-cols-2 gap-2 mb-6">
+                            <button onclick="openRoomModal('join')" class="bg-blue-800 hover:bg-blue-700 text-white py-4 rounded-2xl font-black text-[10px] uppercase flex items-center justify-center gap-2">
+                                <i data-lucide="key" class="w-3 h-3"></i> Join
+                            </button>
+                            <button onclick="openRoomModal('create')" class="bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-2xl font-black text-[10px] uppercase flex items-center justify-center gap-2 shadow-lg shadow-blue-950">
+                                <i data-lucide="plus" class="w-3 h-3"></i> New
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </aside>
 
-            <main>
-                <div id="chat-empty" class="empty-state">
-                    <div style="background: var(--primary-light); padding: 30px; border-radius: 2rem; color: var(--primary)">
-                        <i data-lucide="message-square" style="width: 48px; height: 48px;"></i>
+            <!-- Main Panel -->
+            <main class="flex-1 flex flex-col bg-white overflow-hidden">
+                
+                <!-- Tab 1: Mail View -->
+                <div id="view-mail" class="flex h-full overflow-hidden">
+                    <!-- Email Sidebar -->
+                    <div class="w-full md:w-[380px] border-r border-blue-50 flex flex-col shrink-0 bg-blue-50/20">
+                        <div class="p-8">
+                            <button onclick="openCompose()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-5 rounded-[2rem] font-black shadow-2xl shadow-blue-200 flex items-center justify-center gap-3 transition-all">
+                                <i data-lucide="plus-circle" class="w-5 h-5"></i> New Message
+                            </button>
+                        </div>
+                        <div id="mail-list" class="flex-1 overflow-y-auto custom-scrollbar px-4 space-y-2 pb-10">
+                            <!-- Injected Emails -->
+                        </div>
                     </div>
-                    <h2>No Active Node</h2>
-                    <p style="margin-top: 10px; font-weight: 600;">Join a channel or create a new one to start broadcasting.</p>
+                    
+                    <!-- Email Detail -->
+                    <div id="mail-detail" class="flex-1 flex flex-col bg-white overflow-y-auto custom-scrollbar">
+                        <div id="mail-welcome" class="flex-1 flex flex-col items-center justify-center text-blue-100 p-20 text-center">
+                            <div class="w-32 h-32 bg-blue-50 rounded-full flex items-center justify-center mb-8">
+                                <i data-lucide="mail-open" class="w-16 h-16 text-blue-200"></i>
+                            </div>
+                            <h3 class="text-2xl font-black text-blue-200">Select a secure transmission</h3>
+                        </div>
+                        <div id="mail-content" class="hidden p-12 md:p-20 max-w-4xl mx-auto w-full animate-pop">
+                            <!-- Injected Content -->
+                        </div>
+                    </div>
                 </div>
 
-                <div id="chat-active" class="hidden" style="display: flex; flex-direction: column; height: 100%;">
-                    <div style="padding: 20px 30px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; gap: 15px;">
-                        <div style="background: var(--primary); color: white; padding: 8px; border-radius: 10px;"><i data-lucide="hash" style="width: 18px"></i></div>
-                        <h3 id="active-room-title" style="font-weight: 800; color: var(--primary-dark)">Channel</h3>
+                <!-- Tab 2: Chat View -->
+                <div id="view-chat" class="hidden flex h-full overflow-hidden">
+                    <div id="chat-welcome" class="flex-1 flex flex-col items-center justify-center bg-blue-50/10 p-10 text-center">
+                        <div class="bg-white p-12 rounded-[3rem] shadow-2xl border border-blue-50 max-w-sm">
+                            <div class="w-20 h-20 bg-blue-600 rounded-[2rem] mx-auto mb-6 flex items-center justify-center text-white shadow-xl">
+                                <i data-lucide="message-square" class="w-10 h-10"></i>
+                            </div>
+                            <h3 class="text-2xl font-black text-blue-900 mb-2">Connect Nodes</h3>
+                            <p class="text-blue-500 font-bold mb-8 text-sm">Join a private channel for end-to-end communication.</p>
+                            <button onclick="openRoomModal('join')" class="w-full bg-blue-600 text-white py-5 rounded-2xl font-black shadow-lg">Enter Access Key</button>
+                        </div>
                     </div>
-                    <div id="messages"></div>
-                    <div class="chat-input-area">
-                        <input type="text" id="chat-input" placeholder="Type a secure message...">
-                        <button class="btn btn-primary" onclick="sendMessage()" style="width: 60px; height: 60px; border-radius: 1.5rem; padding: 0;">
-                            <i data-lucide="send"></i>
-                        </button>
+
+                    <div id="chat-active" class="hidden flex-1 flex flex-col bg-blue-50/5">
+                        <div class="px-10 py-6 border-b border-blue-50 bg-white flex items-center justify-between">
+                            <div class="flex items-center gap-4">
+                                <div class="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+                                    <i data-lucide="hash" class="w-5 h-5"></i>
+                                </div>
+                                <div>
+                                    <h4 id="active-room-name" class="font-black text-blue-900 text-lg">General</h4>
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                                        <span class="text-[10px] text-blue-400 font-black uppercase tracking-widest">Node Connected</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="chat-messages" class="flex-1 overflow-y-auto p-8 md:p-12 space-y-8 custom-scrollbar">
+                            <!-- Messages -->
+                        </div>
+                        <div class="p-8 bg-white border-t border-blue-50">
+                            <div class="max-w-4xl mx-auto flex gap-4">
+                                <input id="chat-input" type="text" placeholder="Type a message..." class="flex-1 px-8 py-5 rounded-[2rem] bg-blue-50 border-none focus:ring-2 focus:ring-blue-500 font-bold outline-none text-blue-900">
+                                <button onclick="sendChatMessage()" class="bg-blue-600 hover:bg-blue-700 text-white w-16 h-16 rounded-[1.5rem] flex items-center justify-center shadow-xl transition-all">
+                                    <i data-lucide="send" class="w-6 h-6"></i>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </main>
         </div>
     </div>
 
-    <!-- MODAL CONTAINER -->
-    <div id="modal-container" class="hidden">
-        <div class="modal">
-            <h2 id="modal-title" style="font-weight: 800; margin-bottom: 25px;">Join Node</h2>
-            
-            <div class="input-group">
-                <label>Node Label</label>
-                <input type="text" id="room-name-field" placeholder="Design-Team">
+    <!-- Modals -->
+    <!-- Room Modal (Join/Create) -->
+    <div id="modal-room" class="hidden fixed inset-0 z-[110] modal-overlay flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-[3rem] shadow-2xl p-10 animate-pop">
+            <h3 id="room-modal-title" class="text-2xl font-black mb-6 text-blue-900">Room Gateway</h3>
+            <div class="space-y-4">
+                <div class="space-y-1">
+                    <label class="text-[10px] font-black text-blue-400 uppercase tracking-widest ml-4">Node Name</label>
+                    <input id="room-name-input" type="text" placeholder="e.g. Design-Sync" class="w-full px-6 py-4 rounded-2xl bg-blue-50 outline-none focus:ring-2 focus:ring-blue-500 font-bold text-blue-900">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-black text-blue-400 uppercase tracking-widest ml-4">Access Code</label>
+                    <input id="room-pass-input" type="password" placeholder="••••••••" class="w-full px-6 py-4 rounded-2xl bg-blue-50 outline-none focus:ring-2 focus:ring-blue-500 font-bold text-blue-900">
+                </div>
             </div>
-            <div class="input-group">
-                <label>Security Key</label>
-                <input type="password" id="room-pass-field" placeholder="••••••••">
+            <p id="room-error" class="hidden mt-4 text-center text-red-500 text-xs font-black uppercase tracking-widest">Invalid Entry</p>
+            <div class="mt-8 flex gap-4">
+                <button onclick="closeRoomModal()" class="flex-1 py-4 font-black text-blue-300">Cancel</button>
+                <button id="room-confirm-btn" onclick="handleRoomAction()" class="flex-1 bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg">Authenticate</button>
             </div>
+        </div>
+    </div>
 
-            <p id="room-error" class="error-text">Invalid credentials</p>
-
-            <div style="display: flex; gap: 10px; margin-top: 25px;">
-                <button class="btn" style="color: var(--text-muted)" onclick="closeRoomModal()">Cancel</button>
-                <button class="btn btn-primary" id="modal-confirm-btn" onclick="handleRoomAction()">Confirm</button>
+    <!-- Compose Mail Modal -->
+    <div id="modal-compose" class="hidden fixed inset-0 z-[110] modal-overlay flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden animate-pop">
+            <div class="bg-blue-900 text-white p-8 flex justify-between items-center">
+                <h3 class="font-black text-xl">Compose Transmission</h3>
+                <button onclick="closeCompose()" class="w-10 h-10 flex items-center justify-center bg-white/10 rounded-xl hover:bg-white/20"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="p-8 space-y-4">
+                <input id="mail-to" type="text" placeholder="Recipient (username or email)" class="w-full px-6 py-4 rounded-2xl bg-blue-50 font-bold outline-none text-blue-900">
+                <input id="mail-subject" type="text" placeholder="Subject Reference" class="w-full px-6 py-4 rounded-2xl bg-blue-50 font-bold outline-none text-blue-900">
+                <textarea id="mail-body" placeholder="Message content..." class="w-full h-48 px-6 py-5 rounded-2xl bg-blue-50 font-medium outline-none resize-none text-blue-900"></textarea>
+                <button onclick="sendMail()" class="w-full bg-blue-600 text-white py-5 rounded-2xl font-black shadow-xl text-lg mt-4">Send Electronically</button>
             </div>
         </div>
     </div>
 
     <script>
-        // Icons in SVG format for Favicon
-        const ICON_MAIL = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>`;
-        const ICON_CHAT = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>`;
-
-        function updateFavicon(type) {
-            const svg = type === 'mail' ? ICON_MAIL : ICON_CHAT;
-            const blob = new Blob([svg], {type: 'image/svg+xml'});
-            const url = URL.createObjectURL(blob);
-            document.getElementById('dynamic-favicon').href = url;
-        }
-
-        // State Management
-        let accounts = JSON.parse(localStorage.getItem('cp_users') || '[]');
-        let rooms = JSON.parse(localStorage.getItem('cp_nodes') || '[]');
-        let chats = JSON.parse(localStorage.getItem('cp_chats') || '{}');
+        // CONFIG & SEEDS
+        // Expanded seeds including more feminine/diverse options
+        const AVATAR_SEEDS = [
+            'Aria', 'Luna', 'Cleo', 'Zoey', 'Bella', 'Misty', 'Sasha', 'Nala', // Girls
+            'Jasper', 'Felix', 'Simba', 'Oliver', 'Max', 'Toby', 'Oscar', 'Finn' // Boys/Neutral
+        ];
+        
+        // PERSISTENCE STATE (In-memory + LocalStorage)
+        let accounts = JSON.parse(localStorage.getItem('cp_users')) || [];
+        let rooms = JSON.parse(localStorage.getItem('cp_rooms')) || [];
+        let mails = JSON.parse(localStorage.getItem('cp_mails')) || [];
+        let messages = JSON.parse(localStorage.getItem('cp_messages')) || {}; // { room_id: [] }
+        
         let currentUser = null;
-        let activeRoom = null;
-        let modalMode = 'join'; // or 'create'
-        let selectedSeed = 'Jasper';
+        let selectedAvatar = `https://api.dicebear.com/7.x/notionists/svg?seed=${AVATAR_SEEDS[0]}`;
+        let currentTab = 'mail';
+        let activeRoomId = null;
+        let roomModalMode = 'join';
 
-        // Initialize
+        // INITIALIZATION
         window.onload = () => {
-            renderAvatarGrid();
+            initAvatarGrid();
             checkSession();
             lucide.createIcons();
-            updateFavicon('mail'); // Default favicon
+            
+            // Enter key listeners
+            document.getElementById('chat-input').addEventListener('keypress', (e) => {
+                if(e.key === 'Enter') sendChatMessage();
+            });
         };
 
         function checkSession() {
-            const saved = localStorage.getItem('cp_active_user');
-            if (saved) {
-                currentUser = accounts.find(a => a.user === saved);
-                if (currentUser) {
+            const savedEmail = localStorage.getItem('cp_session_email');
+            if (savedEmail) {
+                const user = accounts.find(a => a.email === savedEmail);
+                if (user) {
+                    currentUser = user;
                     showApp();
                     return;
                 }
@@ -450,65 +376,75 @@
             showLogin();
         }
 
-        // Auth Logic
+        // AUTH LOGIC
         function showLogin() {
             document.getElementById('auth-overlay').classList.remove('hidden');
-            document.getElementById('login-form').classList.remove('hidden');
-            document.getElementById('register-form').classList.add('hidden');
+            document.getElementById('login-container').classList.remove('hidden');
+            document.getElementById('register-container').classList.add('hidden');
             
-            const list = document.getElementById('account-list');
-            list.innerHTML = accounts.map(acc => `
-                <div onclick="loginAs('${acc.user}')" style="display: flex; align-items: center; gap: 15px; padding: 12px 20px; background: #f8fafc; border-radius: 1rem; cursor: pointer; border: 1px solid #e2e8f0;">
-                    <img src="${acc.avatar}" style="width: 32px; height: 32px; border-radius: 8px; background: white;">
-                    <div style="text-align: left">
-                        <div style="font-weight: 800; font-size: 14px; color: var(--text-dark)">${acc.name}</div>
-                        <div style="font-size: 10px; color: var(--text-muted); font-weight: 700;">@${acc.user}</div>
+            const listGrid = document.getElementById('accounts-grid');
+            if (accounts.length > 0) {
+                document.getElementById('accounts-list-section').classList.remove('hidden');
+                listGrid.innerHTML = accounts.map(acc => `
+                    <div onclick="loginAs('${acc.email}')" class="flex items-center gap-4 p-4 bg-blue-50 rounded-[1.5rem] cursor-pointer hover:bg-blue-600 hover:text-white group transition-all border border-blue-100">
+                        <img src="${acc.avatar}" class="w-10 h-10 rounded-xl bg-white shadow-sm">
+                        <div class="flex-1 overflow-hidden">
+                            <p class="font-black text-blue-900 group-hover:text-white truncate">${acc.name}</p>
+                            <p class="text-[9px] text-blue-400 group-hover:text-blue-100 font-black uppercase tracking-widest truncate">${acc.email}</p>
+                        </div>
+                    </div>`).join('');
+            } else {
+                document.getElementById('accounts-list-section').classList.add('hidden');
+            }
+        }
+
+        function showRegistration() {
+            document.getElementById('login-container').classList.add('hidden');
+            document.getElementById('register-container').classList.remove('hidden');
+        }
+
+        function initAvatarGrid() {
+            const grid = document.getElementById('reg-avatar-grid');
+            grid.innerHTML = AVATAR_SEEDS.map((seed, idx) => {
+                const url = `https://api.dicebear.com/7.x/notionists/svg?seed=${seed}`;
+                return `
+                    <div onclick="selectAvatar('${url}', this)" class="avatar-option rounded-2xl bg-blue-50 p-2 ${idx === 0 ? 'selected' : ''}">
+                        <img src="${url}" class="w-full h-full">
                     </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         }
 
-        function showRegister() {
-            document.getElementById('login-form').classList.add('hidden');
-            document.getElementById('register-form').classList.remove('hidden');
+        function selectAvatar(url, el) {
+            document.querySelectorAll('.avatar-option').forEach(opt => opt.classList.remove('selected'));
+            el.classList.add('selected');
+            selectedAvatar = url;
         }
-
-        function renderAvatarGrid() {
-            const seeds = ['Jasper', 'Misty', 'Felix', 'Bella', 'Simba', 'Oliver', 'Cleo', 'Max'];
-            const grid = document.getElementById('avatar-grid');
-            grid.innerHTML = seeds.map(s => `
-                <div class="avatar-item ${s === selectedSeed ? 'active' : ''}" onclick="selectSeed('${s}', this)">
-                    <img src="https://api.dicebear.com/7.x/notionists/svg?seed=${s}">
-                </div>
-            `).join('');
-        }
-
-        window.selectSeed = (s, el) => {
-            selectedSeed = s;
-            document.querySelectorAll('.avatar-item').forEach(i => i.classList.remove('active'));
-            el.classList.add('active');
-        };
 
         function handleRegister() {
             const name = document.getElementById('reg-name').value.trim();
-            const user = document.getElementById('reg-user').value.trim().toLowerCase();
-            if(!name || !user) return;
+            const handle = document.getElementById('reg-handle').value.trim().toLowerCase();
+            if(!name || !handle) return;
             
-            const avatar = `https://api.dicebear.com/7.x/notionists/svg?seed=${selectedSeed}`;
-            const newUser = { name, user, avatar };
+            const email = handle.includes('@') ? handle : handle + "@connect.pro";
+            if(accounts.some(a => a.email === email)) return alert("ID already taken.");
+            
+            const newUser = { name, email, avatar: selectedAvatar };
             accounts.push(newUser);
             localStorage.setItem('cp_users', JSON.stringify(accounts));
-            loginAs(user);
+            loginAs(email);
         }
 
-        function loginAs(username) {
-            currentUser = accounts.find(a => a.user === username);
-            localStorage.setItem('cp_active_user', username);
+        function loginAs(email) {
+            const user = accounts.find(a => a.email === email);
+            if(!user) return;
+            currentUser = user;
+            localStorage.setItem('cp_session_email', email);
             showApp();
         }
 
         function logout() {
-            localStorage.removeItem('cp_active_user');
+            localStorage.removeItem('cp_session_email');
             location.reload();
         }
 
@@ -517,123 +453,225 @@
             document.getElementById('main-app').classList.remove('hidden');
             document.getElementById('header-name').textContent = currentUser.name;
             document.getElementById('header-avatar').src = currentUser.avatar;
-            renderRooms();
-            lucide.createIcons();
-            updateFavicon('mail');
+            
+            renderMailList();
+            renderRoomList();
+            setTab('mail');
         }
 
-        // Room Logic
+        // NAVIGATION
+        function setTab(tab) {
+            currentTab = tab;
+            const isMail = tab === 'mail';
+            
+            document.getElementById('view-mail').classList.toggle('hidden', !isMail);
+            document.getElementById('view-chat').classList.toggle('hidden', isMail);
+            
+            document.getElementById('mail-nav').classList.toggle('hidden', !isMail);
+            document.getElementById('chat-nav').classList.toggle('hidden', isMail);
+            
+            document.getElementById('tab-mail').className = isMail ? 
+                'w-full flex items-center gap-5 px-6 py-5 rounded-2xl transition-all font-black sidebar-active' : 
+                'w-full flex items-center gap-5 px-6 py-5 rounded-2xl transition-all font-black hover:bg-white/5';
+            
+            document.getElementById('tab-chat').className = !isMail ? 
+                'w-full flex items-center gap-5 px-6 py-5 rounded-2xl transition-all font-black sidebar-active' : 
+                'w-full flex items-center gap-5 px-6 py-5 rounded-2xl transition-all font-black hover:bg-white/5';
+            
+            lucide.createIcons();
+        }
+
+        // MAIL LOGIC
+        function openCompose() { document.getElementById('modal-compose').classList.remove('hidden'); }
+        function closeCompose() { document.getElementById('modal-compose').classList.add('hidden'); }
+
+        function sendMail() {
+            const to = document.getElementById('mail-to').value.trim();
+            const subject = document.getElementById('mail-subject').value.trim();
+            const body = document.getElementById('mail-body').value.trim();
+            
+            if(!to || !subject || !body) return;
+            
+            const fullTo = to.includes('@') ? to : to + "@connect.pro";
+            const newMail = {
+                id: Date.now(),
+                from: currentUser.email,
+                fromName: currentUser.name,
+                fromAvatar: currentUser.avatar,
+                to: fullTo,
+                subject,
+                body,
+                timestamp: new Date().toISOString()
+            };
+            
+            mails.push(newMail);
+            localStorage.setItem('cp_mails', JSON.stringify(mails));
+            
+            // Reset and close
+            document.getElementById('mail-to').value = '';
+            document.getElementById('mail-subject').value = '';
+            document.getElementById('mail-body').value = '';
+            closeCompose();
+            renderMailList();
+        }
+
+        function renderMailList() {
+            const list = document.getElementById('mail-list');
+            const myMails = mails.filter(m => m.to === currentUser.email).reverse();
+            
+            document.getElementById('mail-count').textContent = myMails.length;
+            
+            if(myMails.length === 0) {
+                list.innerHTML = `<p class="p-8 text-center text-blue-300 font-black text-[10px] uppercase tracking-widest">Inbox Silent</p>`;
+                return;
+            }
+            
+            list.innerHTML = myMails.map(m => `
+                <div onclick="viewMail(${m.id})" class="p-5 rounded-[2rem] bg-white cursor-pointer hover:bg-blue-50 border border-transparent transition-all">
+                    <div class="flex gap-4">
+                        <img src="${m.fromAvatar}" class="w-10 h-10 rounded-xl bg-blue-50">
+                        <div class="flex-1 min-w-0">
+                            <p class="text-xs font-black text-blue-900 truncate">${m.fromName}</p>
+                            <p class="text-sm font-black text-blue-600 truncate leading-tight">${m.subject}</p>
+                            <p class="text-[11px] text-blue-400 font-medium truncate mt-1">${m.body}</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function viewMail(id) {
+            const mail = mails.find(m => m.id === id);
+            if(!mail) return;
+            
+            document.getElementById('mail-welcome').classList.add('hidden');
+            const content = document.getElementById('mail-content');
+            content.classList.remove('hidden');
+            
+            content.innerHTML = `
+                <div class="mb-10">
+                    <h1 class="text-4xl font-black text-blue-900 leading-tight mb-8">${mail.subject}</h1>
+                    <div class="flex items-center gap-5 p-6 rounded-[2rem] bg-blue-50/50 border border-blue-100">
+                        <img src="${mail.fromAvatar}" class="w-12 h-12 rounded-xl bg-white">
+                        <div>
+                            <p class="font-black text-blue-900">${mail.fromName}</p>
+                            <p class="text-[10px] text-blue-400 font-black uppercase tracking-widest">${mail.from}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="text-blue-800 leading-relaxed text-lg whitespace-pre-wrap">${mail.body}</div>
+            `;
+        }
+
+        // CHAT LOGIC
         function openRoomModal(mode) {
-            modalMode = mode;
-            document.getElementById('modal-container').classList.remove('hidden');
-            document.getElementById('modal-title').textContent = mode === 'create' ? 'Create New Node' : 'Join Existing Node';
-            document.getElementById('modal-confirm-btn').textContent = mode === 'create' ? 'Launch Node' : 'Connect';
-            document.getElementById('room-error').style.display = 'none';
+            roomModalMode = mode;
+            document.getElementById('modal-room').classList.remove('hidden');
+            document.getElementById('room-modal-title').textContent = mode === 'create' ? 'Establish Node' : 'Access Node';
+            document.getElementById('room-confirm-btn').textContent = mode === 'create' ? 'Launch' : 'Connect';
+            document.getElementById('room-error').classList.add('hidden');
         }
 
         function closeRoomModal() {
-            document.getElementById('modal-container').classList.add('hidden');
-            document.getElementById('room-name-field').value = '';
-            document.getElementById('room-pass-field').value = '';
+            document.getElementById('modal-room').classList.add('hidden');
+            document.getElementById('room-name-input').value = '';
+            document.getElementById('room-pass-input').value = '';
         }
 
         function handleRoomAction() {
-            const name = document.getElementById('room-name-field').value.trim();
-            const pass = document.getElementById('room-pass-field').value.trim();
+            const name = document.getElementById('room-name-input').value.trim();
+            const pass = document.getElementById('room-pass-input').value.trim();
             if(!name || !pass) return;
-
-            if(modalMode === 'create') {
-                const id = 'r_' + Date.now();
-                const newRoom = { id, name, pass };
-                rooms.push(newRoom);
-                chats[id] = [];
-                localStorage.setItem('cp_nodes', JSON.stringify(rooms));
-                localStorage.setItem('cp_chats', JSON.stringify(chats));
+            
+            if(roomModalMode === 'create') {
+                const id = 'node_' + Date.now();
+                rooms.push({ id, name, pass });
+                messages[id] = [];
+                localStorage.setItem('cp_rooms', JSON.stringify(rooms));
+                localStorage.setItem('cp_messages', JSON.stringify(messages));
                 selectRoom(id);
                 closeRoomModal();
             } else {
-                const found = rooms.find(r => r.name.toLowerCase() === name.toLowerCase() && r.pass === pass);
-                if(found) {
-                    selectRoom(found.id);
+                const room = rooms.find(r => r.name.toLowerCase() === name.toLowerCase() && r.pass === pass);
+                if(room) {
+                    selectRoom(room.id);
                     closeRoomModal();
                 } else {
-                    document.getElementById('room-error').style.display = 'block';
+                    document.getElementById('room-error').classList.remove('hidden');
                 }
             }
         }
 
-        function renderRooms() {
+        function renderRoomList() {
             const list = document.getElementById('rooms-list');
+            if(rooms.length === 0) {
+                list.innerHTML = `<p class="px-6 text-[9px] font-black text-blue-600/40 uppercase">No active nodes</p>`;
+                return;
+            }
+            
             list.innerHTML = rooms.map(r => `
-                <div class="room-item ${activeRoom?.id === r.id ? 'active' : ''}" onclick="selectRoom('${r.id}')">
-                    <i data-lucide="hash" style="width: 14px"></i>
-                    ${r.name}
-                </div>
+                <button onclick="selectRoom('${r.id}')" class="w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all ${activeRoomId === r.id ? 'bg-blue-600 text-white' : 'text-blue-200 hover:bg-white/10'}">
+                    <i data-lucide="hash" class="w-3 h-3"></i>
+                    <span class="text-xs font-black truncate">${r.name}</span>
+                </button>
             `).join('');
             lucide.createIcons();
         }
 
         function selectRoom(id) {
-            activeRoom = rooms.find(r => r.id === id);
-            document.getElementById('chat-empty').classList.add('hidden');
-            document.getElementById('chat-active').classList.remove('hidden');
-            document.getElementById('active-room-title').textContent = activeRoom.name;
-            renderRooms();
-            renderMessages();
-            updateFavicon('chat'); // Switch to chat icon when a room is active
-        }
-
-        function setMode(mode) {
-            if (mode === 'chat') {
-                activeRoom = null;
-                document.getElementById('chat-empty').classList.remove('hidden');
-                document.getElementById('chat-active').classList.add('hidden');
-                renderRooms();
-                updateFavicon('mail'); // Back to mail when viewing channel list
-            }
-        }
-
-        // Messaging Logic
-        function renderMessages() {
-            const container = document.getElementById('messages');
-            container.innerHTML = '';
-            const roomMsgs = chats[activeRoom.id] || [];
+            activeRoomId = id;
+            const room = rooms.find(r => r.id === id);
             
-            roomMsgs.forEach(m => {
-                const isMe = m.user === currentUser.user;
-                const div = document.createElement('div');
-                div.className = `msg ${isMe ? 'me' : 'them'}`;
-                div.innerHTML = `
-                    <div class="msg-info">${isMe ? 'You' : m.name}</div>
-                    <div>${m.text}</div>
-                `;
-                container.appendChild(div);
-            });
-            container.scrollTop = container.scrollHeight;
+            document.getElementById('chat-welcome').classList.add('hidden');
+            document.getElementById('chat-active').classList.remove('hidden');
+            document.getElementById('active-room-name').textContent = room.name;
+            
+            renderRoomList();
+            renderChatMessages();
+            if(currentTab !== 'chat') setTab('chat');
         }
 
-        function sendMessage() {
+        function sendChatMessage() {
             const input = document.getElementById('chat-input');
             const text = input.value.trim();
-            if(!text || !activeRoom) return;
-
-            if(!chats[activeRoom.id]) chats[activeRoom.id] = [];
+            if(!text || !activeRoomId) return;
             
-            chats[activeRoom.id].push({
-                user: currentUser.user,
-                name: currentUser.name,
-                text: text,
-                time: new Date().toLocaleTimeString()
+            if(!messages[activeRoomId]) messages[activeRoomId] = [];
+            
+            messages[activeRoomId].push({
+                senderEmail: currentUser.email,
+                senderName: currentUser.name,
+                senderAvatar: currentUser.avatar,
+                text,
+                timestamp: new Date().toISOString()
             });
-
-            localStorage.setItem('cp_chats', JSON.stringify(chats));
+            
+            localStorage.setItem('cp_messages', JSON.stringify(messages));
             input.value = '';
-            renderMessages();
+            renderChatMessages();
         }
 
-        document.getElementById('chat-input').addEventListener('keypress', (e) => {
-            if(e.key === 'Enter') sendMessage();
-        });
+        function renderChatMessages() {
+            const container = document.getElementById('chat-messages');
+            const msgs = messages[activeRoomId] || [];
+            
+            container.innerHTML = msgs.map(m => {
+                const isMe = m.senderEmail === currentUser.email;
+                return `
+                    <div class="flex flex-col ${isMe ? 'items-end' : 'items-start'} animate-pop">
+                        <div class="flex items-center gap-2 mb-2 px-1">
+                            ${!isMe ? `<img src="${m.senderAvatar}" class="w-5 h-5 rounded-lg bg-white">` : ''}
+                            <span class="text-[9px] font-black text-blue-400 uppercase tracking-widest">${m.senderName}</span>
+                        </div>
+                        <div class="max-w-[85%] px-6 py-4 text-sm font-bold ${isMe ? 'chat-bubble-me' : 'chat-bubble-them'}">
+                            ${m.text}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            container.scrollTop = container.scrollHeight;
+        }
 
     </script>
 </body>
